@@ -1,0 +1,16 @@
+
+[project]
+name = "LonginusPYPl"
+version = "0.0.3"
+authors = [
+  { name="Longinus", email="team.longinus.project@gmail.com" },
+]
+description = "A small example package"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3"]
+
+[project.urls]
+"Homepage" = "https://github.com/pypa/sampleproject"
+"Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
