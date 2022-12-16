@@ -12,5 +12,5 @@ classifiers = [
     "Programming Language :: Python :: 3"]
 
 [project.urls]
-"Homepage" = "https://github.com/pypa/sampleproject"
-"Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
+"Homepage" = "https://github.com/projectlonginus/LonginusPYPI"
+"Bug Tracker" = "https://github.com/projectlonginus/LonginusPYPI/issues"
