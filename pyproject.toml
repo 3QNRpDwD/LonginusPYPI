@@ -1,7 +1,7 @@
 
 [project]
 name = "LonginusPYPl"
-version = "0.0.3"
+version = "0.0.5"
 authors = [
   { name="Longinus", email="team.longinus.project@gmail.com" },
 ]
