@@ -62,12 +62,19 @@ class Longinus:
                 self.file_out = open("public_key.pem", "wb")
                 self.file_out.write(self.public_key)
                 self.file_out.close()
-                self.path=os.path.dirname( os.path.abspath( __file__ ) )
+                #self.path=os.path.dirname( os.path.abspath( __file__ ) )
+                self.path=os.getcwd()
             else:
                 raise Exception("Key length input error: Token length must be 1024 or 2048 or 4096 or 8192")
         except TypeError as e:
             raise Exception(str(e))
-        return {"public_key":self.path+"\\"+"public_key.pem",".private_key":self.path+"\\"+"private_key.pem"}
+        return {"private_key":self.path+"\\"+"private_key.pem","public_key":self.path+"\\"+"public_key.pem"}
+
+    def pwd_hashing(self,pwd):
+        ph=PasswordHasher()
+        data=pwd
+        data=ph.hash(data)
+        return data
     
     def token_verifier(self,Token:bytes):
         self.token=Token

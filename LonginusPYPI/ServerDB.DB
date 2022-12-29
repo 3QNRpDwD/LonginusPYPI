@@ -1,0 +1,2 @@
+b'+\x8d\xd9>\x7f\xee\xd1\x7fb\x0eF*\x8b\xa6IC\xbdd}\x7fJ\x1b\x12\xb20\xd2\x19I\x812\xb6\xb2' | Token | {'Time Stamp': '1672286069.300534', 'User addres': ('127.0.0.1', 57428), 'login': False} | Token_data | 
+b'+\x8d\xd9>\x7f\xee\xd1\x7fb\x0eF*\x8b\xa6IC\xbdd}\x7fJ\x1b\x12\xb20\xd2\x19I\x812\xb6\xb2' | Token | [{'userid': 'admin'}, {'userpw': '$argon2id$v=19$m=65536,t=3,p=4$ni2d4KySFJtAPMPEGI4qZA$2KhNVeYwBMvD0c2013VAcvwhcab9wqA0IzFDEplIcZ4'}] | User_data | 

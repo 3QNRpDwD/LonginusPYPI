@@ -19,46 +19,54 @@ __all__=['Client']
 class Client:
     L=Longinus()
     ClientDB:dict=dict()
-    def __init__(self,set_address:str,set_port:int):
+    def __init__(self,set_address:str='127.0.0.1',set_port:int=9997):
         self.address=set_address;self.port=set_port;
         self.s=socket()
-        try:
-            self.s.connect((self.address,self.port))
-        except:
-            pass
-        self.head=self.s.recv(4);self.head=int(str(struct.unpack("I",self.head)).split(',')[0].split('(')[1])
-        print(self.head)
-        th=threading .Thread (target =self.recv_client(self.head) ).start ()
+        self.s.connect((self.address,self.port))
+        self.set_keys:dict=self.setting_keys()
+        self.send_keys()
+        self.Token=self.recv_client()
+        self.uid,self.upw=self.user_injecter()
+        self.udata=self.SignUp(self.Token,self.uid,self.upw)
+        self.udata=self.Encryption(self.udata)
+        self.send_userdata(self.udata)
     def Index(self,Token:bytes):
         pass
 
-    def send_client(self,data:bytes):
-        ID,dw=self.user_injecter()
-        self.Token=data
-        self.data=self.SignUp(self.Token,ID,dw)
-        self.body=self.Encryption(Token=self.Token,data=self.data)
+    def send_keys(self):
+        with open(self.set_keys['public_key'],'r') as kfc:
+            self.body=base64.b64encode(kfc.read().encode())
+        self.s.sendall(self.merge_data(self.body))
+
+    def merge_data(self,data):
+        self.body=data
         self.head=struct.pack("I",len(self.body))
-        #print(len(self.body))
         self.send_data=self.head+self.body
-        self.s.sendall(self.send_data)
-        #print(self.send_data)
-        a=input()
-    
-    def recv_client(self,head:int):
+        return self.send_data
+
+    def send_userdata(self,data):
+        self.udata=data
+        self.s.sendall(self.merge_data(self.udata))
+        
+        
+
+    def recv_client(self):
         while True:
-            self.head=head
+            self.head=self.s.recv(4);self.head=int(str(struct.unpack("I",self.head)).split(',')[0].split('(')[1])
             self.recv_datas=bytearray()
-            if self.head==256:
+            if self.head==self.head:
                 self.recv_datas=self.Decryption_Token(self.s.recv(self.head))
                 print('Token Issued : ',self.recv_datas)
-                self.send_client(self.recv_datas)
-                break
+                print(len(self.recv_datas))
+                #self.send_client(self.recv_datas)
+                return self.recv_datas
             else:
-                for i in range(self.head/2048):
+                for i in range(int(self.head/2048)):
                     self.recv_datas.append(self.Decryption_Token(self.s.recv(2048)))
                     print("Downloading "+str(self.addr)+" : "+str(2048*i/self.head*100)+" %"+" Done...")
                 print("Downloading "+str(self.addr)+" Data... : "+"100 % Done...")
-            print('downloaded data : ',self.recv_datas)
+                print('downloaded data : ',self.recv_datas)
+                return self.recv_datas
 
 
     def SignUp(self,Token:bytes,UserID:str,User_pwrd:bytes):
@@ -71,7 +79,7 @@ class Client:
                 if len( self.Userpwrd.decode()) > 8 and re.search('[0-9]+', self.Userpwrd.decode()) is not None and re.search('[a-zA-Z]+', self.Userpwrd.decode()) is not None and re.search('[`~!@#$%^&*(),<.>/?]+', self.Userpwrd.decode()) is not None and " " not in self.Userpwrd.decode() :
                     for i in range(len(self.Userpwrd)):
                         self.temp_data.append(self.Userpwrd[i]^self.Token[i%len(self.Token)])
-                    self.login_data={self.UserID:self.temp_data}
+                    self.login_data=[{'userid':self.UserID},{'userpw':bytes(self.temp_data)}]
                     return self.login_data
                 else:
                     print(User_pwrd.decode())
@@ -81,23 +89,21 @@ class Client:
         else:
             raise  Exception("Name cannot contain spaces or special characters")
 
-    def Encryption(self,Token,data:bytes):
+
+    def setting_keys(self,len:int=2048):
+        self.set_keys=self.L.Create_RSA_key()
+        return self.set_keys
+
+
+    def Encryption(self,Token:bytes,data:bytes):
         self.Token =Token
         self.data=str(data).encode()
         self.send_data=bytes
-        recipient_key = RSA.import_key(open(r"C:\Users\Eternal_Nightmare0\Desktop\Project-Longinus\public_key.pem").read())
         session_key = self.Token
-
-        # Encrypt the session key with the public RSA key
-        cipher_rsa = PKCS1_OAEP.new(recipient_key)
-        enc_session_key = cipher_rsa.encrypt(session_key)
-
         # Encrypt the data with the AES session key
         cipher_aes = AES.new(session_key, AES.MODE_EAX)
-        ciphertext, tag = cipher_aes.encrypt_and_digest(self.data)
-        self.send_data
-        self.send_data= enc_session_key+ cipher_aes.nonce+ tag+ ciphertext
-        print(enc_session_key)#,'\n',cipher_aes.nonce,'\n',tag,'\n',ciphertext)
+        ciphertext, tag = cipher_aes.encrypt_and_digest(base64.b64encode(self.data))
+        self.send_data= cipher_aes.nonce+ tag+ ciphertext
         return self.send_data
 
 
@@ -133,12 +139,6 @@ class Client:
     def emall_verify():
         pass
 
-    def check_key(self):
-        if self.RSAkey==None:
-            self.RSAkey=self.L.Create_RSA_key()
-            return self.RSAkey
-        else:
-            return self.RSAkey
     
     def check_DB(self):
         if self.ClientDB==None:
@@ -147,47 +147,22 @@ class Client:
         else:
             return self.ClientDB
 
-    #def Encryption_userdata(self,Token:bytes=None):
-        self.keydata = Token
-        cbytes = lambda x: str.encode(x) if type(x) == str else x
-        if self.keydata in self.ClientDB.keys():
-            self.data=(str(self.ClientDB[self.keydata])).encode()
-            self.iv=self.L.Token_secrets_token[self.keydata]
-            padding = 16-len(self.data)%16
-            padding = cbytes(chr(padding)*padding)
-            self.cipher = AES.new(self.keydata, AES.MODE_CBC, self.iv)
-            self.output= self.cipher.encrypt(cbytes(self.data+padding))
-            self.ClientDB[self.keydata]=self.output
-            return self.output
-        else:
-            raise  Exception("Could not find information about that token in the database data!")
-    
-    #def Encryption_Token(self,Token:bytes,set_file:str='public_key.pem'):
-        self.Token=Token
-        self.file=set_file
-        print(self.file)
-        #if (self.Token==list and type(Token).__name__=="bytes" and self.keys in self.ClientDB.keys()):
-        try:
-            self.h = open(self.file, 'rb')  
-            self.public_key = RSA.import_key(self.h.read())
-            self.cipher_rsa = PKCS1_OAEP.new(self.public_key)
-            self.h.close() 
-            self.Token_RSA = self.cipher_rsa.encrypt(self.t)
-            self.ClientDB[self.Token_RSA] = self.ClientDB.pop(self.t)
-            return self.Token_RSA
-        except FileNotFoundError:
-            raise Exception("The path to the specified key file could not be found!")
-        #else:
-            #raise  Exception("Could not find information about that token in the database data!")
+    def Encryption(self,data:bytes):
+        self.data=str(data).encode()
+        self.send_data=bytes
+        session_key = self.Token
+        cipher_aes = AES.new(session_key, AES.MODE_EAX)
+        ciphertext, tag = cipher_aes.encrypt_and_digest(base64.b64encode(self.data))
+        self.send_data= cipher_aes.nonce+ tag+ ciphertext
+        print(cipher_aes.nonce,'\n',tag,'\n',ciphertext)
+        return self.send_data
 
-
-    def Decryption_Token(self,Token:bytes,Keyfile:str=r"C:\Users\Eternal_Nightmare0\Desktop\Project-Longinus\public_key.pem"):
+    def Decryption_Token(self,Token):
         self.Token=Token
-        if type(self.Token).__name__=="bytes":
-            self.public_key = RSA.import_key(open(Keyfile, 'rb')  .read())
-            self.cipher_rsa = PKCS1_OAEP.new(self.public_key)
-            self.Token_decrypt = self.cipher_rsa.decrypt(self.Token)
-            return self.Token_decrypt
+        private_key = RSA.import_key(open(self.set_keys['private_key']).read())
+        cipher_rsa = PKCS1_OAEP.new(private_key)
+        session_key = base64.b64decode(cipher_rsa.decrypt(self.Token))
+        return session_key
 
     def user_injecter(self):
         self.pwrd=bytes()
