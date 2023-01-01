@@ -1,4 +1,4 @@
-from .LonginusP import *
+from LonginusP import *
 from Cryptodome.Cipher import AES #line:32
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import AES, PKCS1_OAEP
@@ -25,7 +25,7 @@ class Server:
         self.pul_key:bytes=bytes();self.userdata:bytes=bytes();self.Server_DB:dict=dict()
 
     def server_command(self):
-        cmd_list={'server':[{'--start':self.start_server},{'--stop':None}],'set':[{'-Location':self.path},{'-port':self.set_port},{'-addres':self.set_addr}],'show':[{'-DB':None},{'-Token':None},{'-RSAkey':None},{'-UserData':None}]}
+        cmd_list={'server':[{'--start':self.start_server},{'--stop':None}],'set':[{'-location':self.path},{'-port':self.set_port},{'-addres':self.set_addr}],'show':[{'-DB':None},{'-Token':None},{'-RSAkey':None},{'-UserData':None}]}
         self.req = requests.get("http://ipconfig.kr")
         self.req =str(re.search(r'IP Address : (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', self.req.text)[1])
         self.text='[ Server@'+self.req+' ~]$ '
@@ -36,7 +36,7 @@ class Server:
             if First_cmd in cmd_list.keys():
                 cmd_temp.remove(First_cmd)
                 for y in cmd_temp:
-                    if '-' in y[0]:
+                    if '-' in y[0] and '-' not in y[1]:
                         for x in range(len(cmd_list[First_cmd])):
                             if y in cmd_list[First_cmd][x].keys():
                                 cmd_list[First_cmd][x][y]=input(' [Enter a value into a '+y+' : ')
