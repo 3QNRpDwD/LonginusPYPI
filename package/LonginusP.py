@@ -106,7 +106,7 @@ class Longinus:
             with open(self.Route,'r') as f:
                 self.filedata=f.readlines()
                 for line in self.filedata:
-                    if ' | Token | ' in line:
+                    if ' | Token_data | ' in line:
                         return True
                     else:
                         return False

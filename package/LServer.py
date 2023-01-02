@@ -1,4 +1,4 @@
-from .LonginusP import *
+from LonginusP import *
 from Cryptodome.Cipher import AES #line:32
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import AES, PKCS1_OAEP
@@ -18,41 +18,16 @@ __all__=['Server']
 class Server:
 
     L= Longinus()
-    def __init__(self,set_addr:str="0.0.0.0",set_port:int=9997):
-        self.Login_list:list=list();self.path:str='';self.set_port:int=set_port;self.set_addr:str=set_addr
-        self.Token:bytes=bytes();self.Token_data:dict=dict();self.Token_DB:dict=dict()
+    def __init__(self):
+        self.Login_list:list=list();self.path:str='';self.set_port:int=int();self.set_addr:str=''
+        self.Token:bytes=bytes();self.Token_data:dict=dict();self.Token_DB:dict=dict();self.rdata:str=''
         self.head='';self.c='';self.addr='';self.Token_RSA:bytes=bytes();self.address=list()
         self.pul_key:bytes=bytes();self.userdata:bytes=bytes();self.Server_DB:dict=dict()
 
-    def server_command(self):
-        cmd_list={'server':[{'--start':self.start_server},{'--stop':None}],'set':[{'-location':self.path},{'-port':self.set_port},{'-addres':self.set_addr}],'show':[{'-DB':None},{'-Token':None},{'-RSAkey':None},{'-UserData':None}]}
+    def start_server(self):
         self.req = requests.get("http://ipconfig.kr")
         self.req =str(re.search(r'IP Address : (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', self.req.text)[1])
         self.text='[ Server@'+self.req+' ~]$ '
-        while True:
-            cmd_temp=input(self.text)
-            cmd_temp=cmd_temp.split(' ')
-            First_cmd=cmd_temp[0]
-            if First_cmd in cmd_list.keys():
-                cmd_temp.remove(First_cmd)
-                for y in cmd_temp:
-                    if '-' in y[0] and '-' not in y[1]:
-                        for x in range(len(cmd_list[First_cmd])):
-                            if y in cmd_list[First_cmd][x].keys():
-                                cmd_list[First_cmd][x][y]=input(' [Enter a value into a '+y+' : ')
-                                print(' [ Variable value changed ] : '+cmd_list[First_cmd][x][y])
-                    elif '-' in y[0] and '-' in y[1]:
-                        for x in range(len(cmd_list[First_cmd])):
-                            if y in cmd_list[First_cmd][x].keys():
-                                cmd_list[First_cmd][x][y]()
-                    else:
-                        print(' [ Command not found for ] : '+y)
-            else:
-                print(' [ Command not found for ] : '+First_cmd)
-    def Index():
-        pass
-
-    def start_server(self):
         self.s=socket()
         self.s.bind((self.set_addr,self.set_port))
         self.s.listen(0)
@@ -70,10 +45,10 @@ class Server:
             self.userdata=self.recv_server(set_head=self.head);self.userdata=self.Decryption(self.userdata,self.addr)
             self.userdata=self.user_data_decompress(self.Token,self.userdata);self.userdata=self.SignUp(self.userdata[0],self.userdata[1])
             self.Server_DB:dict=dict();self.Server_DB[self.Token]=self.userdata
-            print(' [ Server | database ] : ',self.Server_DB,'\n')
+            #print(' [ Server | database ] : ',self.Server_DB,'\n')
             self.saveing_all_data(self.Token,self.userdata)
             self.L.Token_DB_loader(Route=r'C:\Users\Eternal_Nightmare0\Desktop\Project-Longinus\package\LonginusPYPL\TokenDB.DB')
-            self.Server_DB_loader(Route=r'C:\Users\Eternal_Nightmare0\Desktop\Project-Longinus\package\LonginusPYPL\ServerDB.DB')
+            self.Server_DB_loader()
             #except:
                 #print(" [ unexpected | error ] ",'\n')
                 #continue
@@ -215,10 +190,10 @@ class Server:
 
     def Server_DB_checker(self):
         try:
-            with open(self.path,'r') as f:
+            with open(self.path+'\\ServerDB.DB','r') as f:
                 self.filedata=f.readlines()
                 for line in self.filedata:
-                    if ' | Token | ' in line:
+                    if ' | User_data | ' in line:
                         return True
                     else:
                         return False
@@ -226,14 +201,14 @@ class Server:
             return False
 
     def Server_DB_loader(self):
-        if  self.Server_DB_checker(self.path) == True:
-            with open(self.path,'r') as f:
+        if  self.Server_DB_checker() == True:
+            with open(self.path+'\\ServerDB.DB','r') as f:
                 self.rdata=f.readlines()
                 self.rdata=self.User_data_loader(self.rdata)
             return self.rdata
 
-    def User_data_loader(self,read_data):
-        self.rdata=read_data
+    def User_data_loader(self,rdata):
+        self.rdata=rdata
         for line in self.rdata:
             for num in range(len(line.split(' | '))):
                 a=eval(line.split(' | ')[0]);b=eval(line.split(' | ')[2])
@@ -243,13 +218,14 @@ class Server:
     def saveing_all_data(self,set_token,user_data):
         self.Token_data,self.Token_DB=self.L.token_login_activator(set_token)
         self.Login_list.append([set_token,user_data])
-        self.L.DB_saver(set_token,r'C:\Users\Eternal_Nightmare0\Desktop\Project-Longinus\package\LonginusPYPL\TokenDB.DB')
+        self.L.DB_saver(set_token,self.path+'\\TokenDB.DB')
         if  self.L.file_checker(self.path) == True:
-            with open(self.path,'a') as f:
+            with open(self.path+'\\ServerDB.DB','a') as f:
                 f.write('\n')
                 f.write(str(set_token)+' | Token | '+str(user_data)+' | User_data | ')
         else:
-            with open(self.path,'w') as f:
+            with open(self.path+'\\ServerDB.DB','w') as f:
                 f.write(str(set_token)+' | Token | '+str(user_data)+' | User_data | ')
 
-d =threading .Thread (target =Server().server_command()).start ()
+    def server_exit(self):
+        sys.exit(self.text)
