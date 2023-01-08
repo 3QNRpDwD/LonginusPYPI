@@ -1,4 +1,4 @@
-from LonginusP import *
+from .LonginusP import *
 from Cryptodome.Cipher import AES #line:32
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import AES, PKCS1_OAEP
@@ -19,39 +19,86 @@ class Server:
 
     L= Longinus()
     def __init__(self):
-        self.Login_list:list=list();self.path:str='';self.set_port:int=int();self.set_addr:str=''
-        self.Token:bytes=bytes();self.Token_data:dict=dict();self.Token_DB:dict=dict();self.rdata:str=''
-        self.head='';self.c='';self.addr='';self.Token_RSA:bytes=bytes();self.address=list()
-        self.pul_key:bytes=bytes();self.userdata:bytes=bytes();self.Server_DB:dict=dict()
+        self.Login_list:list=list();self.path:str=r'C:\Users\Eternal_Nightmare0\Desktop\Project-Longinus\package\LonginusPYPL';self.set_port:int=9997;self.set_addr:str='0.0.0.0';self.s=socket();self.ip:str=str()
+        self.Token:bytes=bytes();self.Token_data:dict=dict();self.Token_DB:dict=dict();self.rdata:str='';self.platform:str='shell'
+        self.head='';self.c='';self.addr='';self.Token_RSA:bytes=bytes();self.address=list();self.sessions:list=list()
+        self.pul_key:bytes=bytes();self.userdata:bytes=bytes();self.Server_DB:dict=dict();self.new_session:dict=dict()
 
     def start_server(self):
-        self.req = requests.get("http://ipconfig.kr")
-        self.req =str(re.search(r'IP Address : (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', self.req.text)[1])
-        self.text='[ Server@'+self.req+' ~]$ '
-        self.s=socket()
-        self.s.bind((self.set_addr,self.set_port))
-        self.s.listen(0)
-        print(' [ Server started at : '+self.req+' ] ')
-        while True:
-            #try:
-            self.head,self.c,self.addr=self.recv_head()
-            self.address.append(self.addr)
-            self.pul_key=self.recv_keys()
-            self.Token,self.Token_data,self.Token_DB=self.L.Token_generator(length=32,set_addres=self.addr)
-            self.Token_RSA=self.Encryption_token(self.Token,self.pul_key)
-            self.send_server(self.Token_RSA)
-            print(' [ Send | Token ] : ',self.Token)
-            self.head=self.c.recv(4);self.head=int(str(struct.unpack("I",self.head)).split(',')[0].split('(')[1])
-            self.userdata=self.recv_server(set_head=self.head);self.userdata=self.Decryption(self.userdata,self.addr)
-            self.userdata=self.user_data_decompress(self.Token,self.userdata);self.userdata=self.SignUp(self.userdata[0],self.userdata[1])
-            self.Server_DB:dict=dict();self.Server_DB[self.Token]=self.userdata
-            #print(' [ Server | database ] : ',self.Server_DB,'\n')
-            self.saveing_all_data(self.Token,self.userdata)
-            self.L.Token_DB_loader(Route=r'C:\Users\Eternal_Nightmare0\Desktop\Project-Longinus\package\LonginusPYPL\TokenDB.DB')
-            self.Server_DB_loader()
-            #except:
-                #print(" [ unexpected | error ] ",'\n')
-                #continue
+            self.req = requests.get("http://ipconfig.kr")
+            self.req =str(re.search(r'IP Address : (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', self.req.text)[1])
+            self.text='[ Server@'+self.req+' ~]$ '
+            self.s.bind((self.set_addr,self.set_port))
+            self.s.listen(0)
+            print(' [ Server started at : '+self.req+' ] ')
+            while True:
+                #try:
+                self.head,self.c,self.addr=self.recv_head()
+                self.address.append(self.addr)
+                self.pul_key=self.recv_keys()
+                self.Token,self.Token_data,self.Token_DB=self.L.Token_generator(length=32,set_addres=self.addr)
+                self.Token_RSA=self.Encryption_token(self.Token,self.pul_key)
+                self.send_server(self.Token_RSA)
+                print('  [ Send | Token ] : ',self.Token)
+                self.head=self.c.recv(4);self.head=int(str(struct.unpack("I",self.head)).split(',')[0].split('(')[1])
+                self.recv_server(set_head=self.head);self.Decryption(self.userdata,self.addr)
+                self.user_data_decompress(self.Token,self.userdata);self.SignUp(self.userdata[0],self.userdata[1])
+                self.session_classifier()
+                self.Server_DB:dict=dict();self.Server_DB[self.Token]=self.userdata
+                #print('  [ Server | database ] : ',self.sessions,'\n')
+                self.saveing_all_data()
+                self.reset_server()
+                #except Exception as e :
+                    #print(e)
+
+    def login_checker(self):
+        if self.recv_datas:
+            pass
+
+    def session_classifier(self):
+        userid=self.userdata[0]['userid']
+        if (userid=='Guest' or userid=='guest' or userid=='__Guest__' or userid=='__guest__'):
+            self.guest_session_creator()
+        elif (userid=='Admin' or userid=='admin' or userid=='__Admin__' or userid=='__admin__' or userid=='__administrator__'or userid=='administrator'or userid=='Administrator'or userid=='__Administrator__'):
+            self.admin_session_creator()
+        else:
+            self.session_creator()
+        return userid
+
+    def admin_session_creator(self):
+        self.Token,self.Token_data,self.Token_DB=self.L.Token_generator(length=32,set_addres=self.addr)
+        if (self.ip=='127.0.0.1' and self.platform=='shell'):
+            self.Token_data['SignUp']=True
+            self.new_session={self.Token:{'user_id':self.userdata[0]['userid'],'user_pw':self.userdata[1]['userpw'],'permission_lv':0,'class':'__administrator__'}}
+            self.new_session[self.Token].update(self.Token_data)
+            self.sessions.append(self.new_session)
+            print(self.sessions)
+        return self.new_session
+    
+    def session_creator(self):
+        self.Token,self.Token_data,self.Token_DB=self.L.Token_generator(length=32,set_addres=self.ip)
+        if (self.ip!='127.0.0.1' and self.platform=='client'):
+            self.Token_data['SignUp']=True
+            self.new_session={self.Token:{'user_id':self.userdata[0]['userid'],'user_pw':self.userdata[1]['userpw'],'permission_lv':1,'class':'__user__'}}.update(self.Token_data)
+            self.sessions.append(self.new_session)
+        print(self.sessions)
+        return self.new_session
+
+
+    def guest_session_creator(self):
+        self.Token,self.Token_data,self.Token_DB=self.L.Token_generator(length=32,set_addres=self.addr)
+        if (self.ip=='127.0.0.1' and self.platform=='client'):
+            self.Token_data['SignUp']=True
+            self.new_session={self.Token:{'user_id':self.userdata[0]['userid'],'permission_lv':1,'class':'__guest__'}}.update(self.Token_data)
+            self.sessions.append(self.new_session)
+        print(self.sessions)
+        return self.new_session
+
+    def reset_server(self):
+        self.rdata:str=''
+        self.head='';self.Token_RSA:bytes=bytes();
+        self.pul_key:bytes=bytes();self.userdata:bytes=bytes()
+
     def close_server(self):
         pass
 
@@ -61,13 +108,13 @@ class Server:
 
     def user_data_decompress(self,token,data):
         self.temp=data;self.Token=token
-        self.temp=self.temp[self.Token]
         self.temp=eval(self.temp.decode())
         self.uid=self.temp[0];self.uwp=self.temp[1];self.uwp=self.uwp['userpw']
         self.temp0=bytearray()
         for i in range(len(self.uwp)):
             self.temp0.append(self.uwp[i]^self.Token[i%len(self.Token)])
         self.temp=self.temp[1];self.temp['userpw']=bytes(self.temp0)
+        self.userdata=[self.uid,self.temp]
         #print([self.uid,self.temp])
         return [self.uid,self.temp]
         
@@ -79,7 +126,8 @@ class Server:
         while True:
             self.c,self.addr=self.s.accept();
             self.head=self.c.recv(4);self.head=int(str(struct.unpack("I",self.head)).split(',')[0].split('(')[1])
-            print(' [ Received | From ] : ',str(self.addr))
+            print('  [ Received | From ] : ',str(self.addr))
+            self.ip=str(self.addr).split("'")[1]
             return self.head,self.c,self.addr
         #except:
             #print('An unexpected error occurred')
@@ -99,10 +147,10 @@ class Server:
                 self.recv_datas=bytearray()
                 for i in range(int(self.head/2048)):
                     self.recv_datas.append(self.c.recv(2048))
-                    print(" [ Downloading "+str(self.addr)+" : "+str(2048*i/self.head*100)+" % ] "+" [] Done... ] ")
-                print(" [ Downloading "+str(self.addr)+"100 % ] [ Done... ]",'\n')
+                    print("  [ Downloading "+str(self.addr)+" : "+str(2048*i/self.head*100)+" % ] "+" [] Done... ] ")
+                print("  [ Downloading "+str(self.addr)+"100 % ] [ Done... ]",'\n')
                 self.recv_datas=base64.b64decode(bytes(self.recv_datas))
-            print(" [ Received | Key ] ")
+            print("  [ Received | Key ] ")
             return self.recv_datas
 
     def recv_server(self,set_head):
@@ -116,23 +164,25 @@ class Server:
                 self.recv_datas=bytearray()
                 for i in range(int(self.head/2048)):
                     self.recv_datas.append(self.c.recv(2048))
-                    print(" [ Downloading "+str(self.addr)+" : "+str(2048*i/self.head*100)+" % ]"+" [] Done... ] ")
-                print(" [ Downloading "+str(self.addr)+"100 % ] [ Done... ] ",'\n')
+                    print("  [ Downloading "+str(self.addr)+" : "+str(2048*i/self.head*100)+" % ]"+" [] Done... ] ")
+                print("  [ Downloading "+str(self.addr)+"100 % ] [ Done... ] ",'\n')
                 self.recv_datas=bytes(self.recv_datas)
-            print(" [ Received | Data ] : ",self.recv_datas)
+            print("  [ Received | Data ] : ",self.recv_datas)
+            self.userdata=self.recv_datas
             return self.recv_datas     
         #except:
             #print('An unexpected error occurred')
 
 
-    def SignUp(self,UserID:dict,User_pwrd:dict):
+    def SignUp(self,UserID:str,User_pwrd:bytes):
         self.UserID=UserID['userid']
         self.Userpwrd=User_pwrd['userpw']
         if (" " not in self.UserID and "\r\n" not in self.UserID and "\n" not in self.UserID and "\t" not in self.UserID and re.search('[`~!@#$%^&*(),<.>/?]+', self.UserID) is None):
-            if len( self.Userpwrd.decode()) > 8 and re.search('[0-9]+', self.Userpwrd.decode()) is not None and re.search('[a-zA-Z]+', self.Userpwrd.decode()) is not None and re.search('[`~!@#$%^&*(),<.>/?]+', self.Userpwrd.decode()) is not None and " " not in self.Userpwrd.decode() :
+            if (len( self.Userpwrd.decode()) > 8 and re.search('[0-9]+', self.Userpwrd.decode()) is not None and re.search('[a-zA-Z]+', self.Userpwrd.decode()) is not None and re.search('[`~!@#$%^&*(),<.>/?]+', self.Userpwrd.decode()) is not None and " " not in self.Userpwrd.decode()):
                 self.Userpwrd=self.L.pwd_hashing(base64.b64encode(bytes(a ^ b for a, b in zip( self.Token,self.Userpwrd))))
                 self.login_data=[{'userid':self.UserID},{'userpw':self.Userpwrd}]
-                return [{'userid':self.UserID},{'userpw':self.Userpwrd}]
+                self.userdata=self.login_data
+                return self.login_data
             else:
                 raise  Exception("Your password is too short or too easy. Password must be at least 8 characters and contain numbers, English characters and symbols. Also cannot contain whitespace characters.")
         else:
@@ -142,15 +192,13 @@ class Server:
         pass
 #############################################################################################################################################################################################################################
     def Login(self,UserName:str,User_pwrd:bytes):
-        self.hash = blake2b(digest_size=32)
         self.UserName=UserName
         self.Userpwrd=User_pwrd
         if (" " not in self.UserName and "\r\n" not in self.UserName and "\n" not in self.UserName and "\t" not in self.UserName and re.search('[`~!@#$%^&*(),<.>/?]+', self.UserName) is None):
-            if len( self.Userpwrd.decode()) > 8 and re.search('[0-9]+', self.Userpwrd.decode()) is not None and re.search('[a-zA-Z]+', self.Userpwrd.decode()) is not None and re.search('[`~!@#$%^&*(),<.>/?]+', self.Userpwrd.decode()) is not None and " " not in self.Userpwrd.decode() :
-                self.hash.update(base64.b64encode(bytes(a ^ b for a, b in zip( self.Userpwrd, self.Token))))
-                self.Userpwrd=PasswordHasher().hash(self.hash.digest())
-                self.Server_DB.setdefault(self.Token,{self.UserName:self.Userpwrd})
-                return {self.Token:{self.UserName:self.Userpwrd}}
+            if (len( self.Userpwrd.decode()) > 8 and re.search('[0-9]+', self.Userpwrd.decode()) is not None and re.search('[a-zA-Z]+', self.Userpwrd.decode()) is not None and re.search('[`~!@#$%^&*(),<.>/?]+', self.Userpwrd.decode()) is not None and " " not in self.Userpwrd.decode()):
+                if PasswordHasher.verify(self.login_data['Userpw'],self.Userpwrd)==True:
+                    self.Server_DB.setdefault(self.Token,{self.UserName:self.Userpwrd}) 
+                    return {self.Token:{self.UserName:self.Userpwrd}}
             else:
                 raise  Exception("Your password is too short or too easy. Password must be at least 8 characters and contain numbers, English characters and symbols. Also cannot contain whitespace characters.")
         else:
@@ -186,14 +234,15 @@ class Server:
         session_key = self.L.token_address_explorer(set_addr)
         cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
         data = base64.b64decode(cipher_aes.decrypt_and_verify(ciphertext, tag))
-        return {session_key:data}
+        self.userdata=data
+        return data
 
     def Server_DB_checker(self):
         try:
             with open(self.path+'\\ServerDB.DB','r') as f:
                 self.filedata=f.readlines()
                 for line in self.filedata:
-                    if ' | User_data | ' in line:
+                    if ' | Sessions_data | ' in line:
                         return True
                     else:
                         return False
@@ -202,7 +251,7 @@ class Server:
 
     def Server_DB_loader(self):
         if  self.Server_DB_checker() == True:
-            with open(self.path+'\\ServerDB.DB','r') as f:
+            with open(self.path+'\\SessionsDB.DB','r') as f:
                 self.rdata=f.readlines()
                 self.rdata=self.User_data_loader(self.rdata)
             return self.rdata
@@ -215,17 +264,15 @@ class Server:
                 self.Server_DB.setdefault(a,b)
         return self.Server_DB
 
-    def saveing_all_data(self,set_token,user_data):
-        self.Token_data,self.Token_DB=self.L.token_login_activator(set_token)
-        self.Login_list.append([set_token,user_data])
-        self.L.DB_saver(set_token,self.path+'\\TokenDB.DB')
-        if  self.L.file_checker(self.path) == True:
-            with open(self.path+'\\ServerDB.DB','a') as f:
+    def saveing_all_data(self):
+        if  self.Server_DB_checker() == True:
+            with open(self.path+'\\SessionDB.DB','a') as f:
                 f.write('\n')
-                f.write(str(set_token)+' | Token | '+str(user_data)+' | User_data | ')
+                f.write(str(self.sessions)+' | Sessions_data | ')
+                print('done')
         else:
-            with open(self.path+'\\ServerDB.DB','w') as f:
-                f.write(str(set_token)+' | Token | '+str(user_data)+' | User_data | ')
+            with open(self.path+'\\SessionDB.DB','w') as f:
+                f.write(str(self.sessions)+' | Sessions_data | ')
 
     def server_exit(self):
         sys.exit(self.text)

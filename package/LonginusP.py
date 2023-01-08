@@ -96,9 +96,12 @@ class Longinus:
 
     def pwd_hashing(self,pwd):
         ph=PasswordHasher()
-        data=pwd
-        data=ph.hash(data)
-        return data
+        while True:
+            temp=ph.hash(pwd)
+            if (ph.verify(temp,pwd)!=True and ph.check_needs_rehash(temp)!=False):
+                continue
+            break
+        return temp
 
     def file_checker(self,Route:str):
         self.Route=Route

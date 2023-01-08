@@ -1,4 +1,4 @@
-from LonginusP import *
+from .LonginusP import *
 from Cryptodome.Cipher import AES #line:32
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import AES, PKCS1_OAEP
@@ -26,8 +26,7 @@ class Client:
         self.set_keys:dict=self.setting_keys()
         self.send_keys()
         self.Token=self.recv_client()
-        self.uid,self.upw=self.user_injecter()
-        print(self.uid,self.upw)
+        self.uid,self.upw=self.user_injecter() 
         self.udata=self.SignUp(self.Token,self.uid,self.upw)
         self.udata=self.Encryption(self.udata)
         self.send_userdata(self.udata)
