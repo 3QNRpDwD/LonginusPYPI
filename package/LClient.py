@@ -1,4 +1,4 @@
-from .LonginusP import *
+from LonginusP import *
 from Cryptodome.Cipher import AES #line:32
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import AES, PKCS1_OAEP
@@ -23,69 +23,70 @@ class Client:
         self.addr=set_addr;self.port=set_port;self.recv_datas=bytes();self.SignUp_data=list;self.Cypherdata:bytes
         self.userid=str();self.pwrd=bytes();self.udata=bytes();self.head=bytes();self.rsa_keys:bytes=bytes()
         self.cipherdata=bytes();self.s=socket();self.token:bytes;self.atoken:bytes=bytes;self.rtoken:bytes
-        #self.send_client(b'login')
+
+    def client_start(self):
         self.client_hello()
         self.recv_head()
         self.recv()
         self.json_decompress()
-        self.pre_master_key_generator()
-        self.client_key_exchange()
-        # self.rsa_encode()
-        # self.send_client(self.cipherdata)
-
-    def Index(self,Token:bytes):
-        pass
+        self.error_detector()
+        self.protocol_execution()
+        self.user_injecter()
+        self.SignUp()
 
     def client_hello(self):
          self.s.connect((self.addr,self.port))
          self.rtoken=self.L.Random_Token_generator()
-         self.jsobj={
-            'content-type':'handshake', 
-            'platform':'client',
-            'version':'0.2.6',
-            'addres':gethostbyname(gethostname()),
-            'body':{'protocol':'client_hello',
-                        'random_token':self.rtoken.decode(),
-                        'random_token_length':len(self.rtoken),
-                        'access_token':None,
-                        'access_token_length':None,
-                        'userid':None,
-                        'userpw':None,
-                        'master_secret':None
-                        }
-         }
-         self.jsobj_dump= json.dumps(self.jsobj,indent=2)
-         self.s.send(self.merge_data(self.jsobj_dump.encode()))
+         self.Create_json_object(content_type='handshake',platform='client',version='0.2.6',
+                                            addres=gethostbyname(gethostname()),protocol='client_hello',
+                                            random_token=self.rtoken.decode(),random_token_length=len(self.rtoken),
+                                            )
+         self.send(self.jsobj_dump)
 
     def client_key_exchange(self):
         self.s=socket()
         self.s.connect((self.addr,self.port))
+        self.pre_master_key_generator()
         self.Cypherdata=base64.b85encode(self.encryption_rsa(self.rsa_keys,self.pre_master_key))
         self.rtoken=self.L.Random_Token_generator()
+        self.Create_json_object(content_type='handshake',platform='client',version='0.2.6',
+                                            addres=gethostbyname(gethostname()),protocol='client_key_exchange',
+                                            master_secret=self.Cypherdata.decode())
+        self.send(self.jsobj_dump)
+        self.master_key=self.pre_master_key
+        self.pre_master_key=None
+
+    def Create_json_object(self,content_type=None,platform=None,version=None,
+                                        addres=None,protocol=None,random_token=None,
+                                        random_token_length=None,userid=None,userpw=None,
+                                        master_secret=None,access_token=None,access_token_length=None):
         self.jsobj={
-            'content-type':'handshake', 
-            'platform':'client',
-            'version':'0.2.6',
-            'addres':gethostbyname(gethostname()),
-            'body':{'protocol':'client_key_exchange',
-                        'random_token':None,
-                        'random_token_length':None,
-                        'access_token':None,
-                        'access_token_length':None,
-                        'userid':None,
-                        'userpw':None,
-                        'master_secret':self.Cypherdata.decode()
+            'content-type':content_type, 
+            'platform':platform,
+            'version':version,
+            'addres':addres,
+            'body':{'protocol':protocol,
+                        'random_token':random_token,
+                        'random_token_length':random_token_length,
+                        'access_token':access_token,
+                        'access_token_length':access_token_length,
+                        'userid':userid,
+                        'userpw':userpw,
+                        'master_secret':master_secret
                         }
          }
         self.jsobj_dump= json.dumps(self.jsobj,indent=2)
-        self.s.send(self.merge_data(self.jsobj_dump.encode()))
-        self.s.close()
+        return self.jsobj_dump
 
-    def merge_data(self,data:bytes):
+
+    def merge_data(self,data:str):
         self.body=base64.b85encode(data)
         self.head=struct.pack("I",len(self.body))
         self.send_data=self.head+self.body
         return self.send_data
+    
+    def send(self,data:str):
+        self.s.send(self.merge_data(data.encode()))
 
     def json_decompress(self):
         self.recv_datas=base64.b85decode(self.recv_datas).decode()
@@ -97,8 +98,16 @@ class Client:
         self.protocol=self.jsobj['body']["protocol"]
         self.content_type=self.jsobj["content-type"]
         self.rsa_keys=self.jsobj['body']["public-key"]
+        self.server_error=self.jsobj['body']["server_error"]
         return
 
+    def protocol_execution(self):
+        if (self.content_type=='handshake' and self.protocol=='server_hello'):
+            self.client_key_exchange()
+
+    def error_detector(self):
+        if self.server_error!=None:
+            raise Exception(self.server_error)
 
     def pre_master_key_generator(self):
         self.pre_master_key=self.L.master_key_generator(self.token.encode(),self.rtoken)
@@ -216,3 +225,5 @@ class Client:
                 self.pwrd+=self.new_char
                 self.input_num+=1
         return self.userid,self.pwrd
+
+Client().client_start()
