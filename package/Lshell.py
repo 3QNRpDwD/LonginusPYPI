@@ -1,6 +1,8 @@
 import re,requests,threading,struct
 from socket import *
 
+__all__=['shell']
+
 class shell:
     def __init__(self):
         self.cmd=str()

@@ -10,7 +10,7 @@ from asyncio import *
 import PyQt5
 from hashlib import blake2b
 from argon2 import PasswordHasher
-import msvcrt,re,secrets,secrets,base64,requests
+import msvcrt,re,secrets,secrets,base64,requests,hmac
 import json
 import struct
 
@@ -20,56 +20,115 @@ class Client:
     L=Longinus()
     ClientDB:dict=dict()
     def __init__(self,set_addr:str='127.0.0.1',set_port:int=9997):
-        self.addr=set_addr;self.port=set_port;self.recv_datas=bytes();self.SignUp_data=list
-        self.userid=str();self.pwrd=bytes();self.udata=bytes();self.head=bytes();self.rsa_keys=bytes
-        self.cipherdata=bytes();self.s=socket()
+        self.addr=set_addr;self.port=set_port;self.recv_datas=bytes();self.SignUp_data=list;self.Cypherdata:bytes
+        self.userid=str();self.pwrd=bytes();self.udata=bytes();self.head=bytes();self.rsa_keys:bytes=bytes()
+        self.cipherdata=bytes();self.s=socket();self.token:bytes;self.atoken:bytes=bytes;self.rtoken:bytes
         #self.send_client(b'login')
+        self.client_hello()
         self.recv_head()
-        self.recv_keys()
-        self.user_injecter()
-        self.SignUp()
-        self.rsa_encode()
-        self.send_client(self.cipherdata)
+        self.recv()
+        self.json_decompress()
+        self.pre_master_key_generator()
+        self.client_key_exchange()
+        # self.rsa_encode()
+        # self.send_client(self.cipherdata)
 
     def Index(self,Token:bytes):
         pass
 
-    # def send_keys(self):
-    #     self.s=socket()
-    #     self.s.connect((self.address,self.port))
-    #     with open(self.set_keys['public_key'],'r') as kfc:
-    #         self.body=base64.b64encode(kfc.read().encode())
-    #     self.s.sendall(self.merge_data(self.body))
+    def client_hello(self):
+         self.s.connect((self.addr,self.port))
+         self.rtoken=self.L.Random_Token_generator()
+         self.jsobj={
+            'content-type':'handshake', 
+            'platform':'client',
+            'version':'0.2.6',
+            'addres':gethostbyname(gethostname()),
+            'body':{'protocol':'client_hello',
+                        'random_token':self.rtoken.decode(),
+                        'random_token_length':len(self.rtoken),
+                        'access_token':None,
+                        'access_token_length':None,
+                        'userid':None,
+                        'userpw':None,
+                        'master_secret':None
+                        }
+         }
+         self.jsobj_dump= json.dumps(self.jsobj,indent=2)
+         self.s.send(self.merge_data(self.jsobj_dump.encode()))
 
-    def merge_data(self,data):
-        self.body=data
+    def client_key_exchange(self):
+        self.s=socket()
+        self.s.connect((self.addr,self.port))
+        self.Cypherdata=base64.b85encode(self.encryption_rsa(self.rsa_keys,self.pre_master_key))
+        self.rtoken=self.L.Random_Token_generator()
+        self.jsobj={
+            'content-type':'handshake', 
+            'platform':'client',
+            'version':'0.2.6',
+            'addres':gethostbyname(gethostname()),
+            'body':{'protocol':'client_key_exchange',
+                        'random_token':None,
+                        'random_token_length':None,
+                        'access_token':None,
+                        'access_token_length':None,
+                        'userid':None,
+                        'userpw':None,
+                        'master_secret':self.Cypherdata.decode()
+                        }
+         }
+        self.jsobj_dump= json.dumps(self.jsobj,indent=2)
+        self.s.send(self.merge_data(self.jsobj_dump.encode()))
+        self.s.close()
+
+    def merge_data(self,data:bytes):
+        self.body=base64.b85encode(data)
         self.head=struct.pack("I",len(self.body))
         self.send_data=self.head+self.body
         return self.send_data
+
+    def json_decompress(self):
+        self.recv_datas=base64.b85decode(self.recv_datas).decode()
+        self.jsobj = json.loads(self.recv_datas)
+        self.server_version=self.jsobj["version"]
+        self.token=self.jsobj['body']['random_token']
+        self.atoken=self.jsobj['body']['access_token']
+        self.platform=self.jsobj["platform"]
+        self.protocol=self.jsobj['body']["protocol"]
+        self.content_type=self.jsobj["content-type"]
+        self.rsa_keys=self.jsobj['body']["public-key"]
+        return
+
+
+    def pre_master_key_generator(self):
+        self.pre_master_key=self.L.master_key_generator(self.token.encode(),self.rtoken)
+        return self.pre_master_key
 
     def send_client(self,data):
         self.s.sendall(self.merge_data(data))
 
     def recv_head(self):
         #try:
-        self.s.connect((self.addr,self.port))
-        self.head=self.s.recv(4);self.head=int(str(struct.unpack("I",self.head)).split(',')[0].split('(')[1])
+        self.head=self.s.recv(4)
+        self.head=int(str(struct.unpack("I",self.head)).split(',')[0].split('(')[1])
         return self.head
         #except:
             #print('An unexpected error occurred')
 
-    def recv_keys(self):
-        self.recv_datas=bytearray()
-        if self.head==self.head:
-            self.rsa_keys=base64.b64decode(self.s.recv(self.head))
-            return self.rsa_keys
-        else:
+    def recv(self):
+        self.recv_datas=bytes()
+        if self.head<2048:
+            self.recv_datas=self.s.recv(self.head)
+            self.cipherdata=self.recv_datas
+        elif self.head>=2048:
+            self.recv_datas=bytearray()
             for i in range(int(self.head/2048)):
                 self.recv_datas.append(self.s.recv(2048))
-                print("Downloading "+str(self.addr)+" : "+str(2048*i/self.head*100)+" %"+" Done...")
-            print("Downloading "+str(self.addr)+" Data... : "+"100 % Done...")
-            self.rsa_keys=self.recv_datas
-            return self.rsa_keys
+                print("  [ Downloading "+str(self.addr)+" : "+str(2048*i/self.head*100)+" % ]"+" [] Done... ] ")
+            print("  [ Downloading "+str(self.addr)+"100 % ] [ Done... ] ",'\n')
+            self.recv_datas=bytes(self.recv_datas)
+        self.s.close()
+        return self.recv_datas
 
     def SignUp(self):
         self.temp_data=bytearray()
@@ -98,12 +157,6 @@ class Client:
     def Repwrd():
         pass
 
-    def token_verifier():
-        pass
-
-    def verify():
-        pass
-
     def emall_verify():
         pass
 
@@ -116,11 +169,23 @@ class Client:
     #     self.send_data= cipher_aes.nonce+ tag+ ciphertext
     #     return self.send_data
 
-    def rsa_encode(self):
-        public_key = RSA.import_key(self.rsa_keys)
+    def hmac_cipher(self,data):
+        self.hmac_data=hmac.digest(self.master_key,data,blake2b)
+        self.verified_data=data+self.hmac_data
+        return self.verified_data
+
+
+    def encryption_rsa(self,set_pul_key:str,data:bytes):
+        public_key = RSA.import_key(set_pul_key)
         cipher_rsa = PKCS1_OAEP.new(public_key)
-        self.cipherdata = cipher_rsa.encrypt(base64.b64encode((str(self.SignUp_data).encode())))
-        return self.cipherdata
+        self.encrypt_data = cipher_rsa.encrypt(base64.b85encode(data))
+        return self.encrypt_data
+
+    def decryptio_rsa(self,set_prv_key:str,encrypt_data:bytes):
+        private_key = RSA.import_key(set_prv_key)
+        cipher_rsa = PKCS1_OAEP.new(private_key)
+        self.decrypt_data=base64.b85decode(cipher_rsa.decrypt(encrypt_data))
+        return self.decrypt_data
 
     def Decryption_Token(self):
         private_key = RSA.import_key(open(self.set_keys['private_key']).read())
@@ -151,4 +216,3 @@ class Client:
                 self.pwrd+=self.new_char
                 self.input_num+=1
         return self.userid,self.pwrd
-Client()
