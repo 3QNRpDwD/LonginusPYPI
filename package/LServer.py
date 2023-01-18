@@ -1,4 +1,4 @@
-from LonginusP import *
+from .LonginusP import *
 from Cryptodome.Cipher import AES #line:32
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import AES, PKCS1_OAEP
@@ -10,7 +10,7 @@ from asyncio import *
 import PyQt5
 from hashlib import blake2b
 from argon2 import PasswordHasher
-import msvcrt,re,secrets,secrets,base64,requests,struct,hmac,logging
+import msvcrt,re,secrets,secrets,base64,requests,struct,hmac,logging,pickle
 from multiprocessing import Process
 
 __all__=['Server']
@@ -31,8 +31,9 @@ class Server:
         self.Token_data=Token_data;self.Token_DB=Token_DB;self.rdata=rdata;self.platform=platform;self.pul_key=pul_key
         self.head=head;self.c=c;self.addr=addr;self.Token_RSA=Token_RSA;self.address=address;self.sessions=sessions
         self.pul_key=pul_key;self.userdata=userdata;self.Server_DB=Server_DB;self.new_session=new_session;self.temp=''
-        self.jsobj:str;self.client_version:str;self.rtoken:bytes;self.atoken:bytes;self.platform:str;self.internal_ip:str;self.session_keys:dict=dict()
-        self.protocol:str='Preliminaries';self.content_type:str
+        self.jsobj:str;self.client_version:str;self.rtoken:bytes;self.atoken:str;self.platform:str;self.internal_ip:str;self.session_keys:dict=dict()
+        self.protocol:str='Preliminaries';self.content_type:str;self.hmac_hash=bytes();self.Cypher_userid=bytes();self.Cypher_userpw=bytes()
+        self.userid=str();self.userpw=str();self.session_data=dict();self.pre_master_key=bytes();self.reqdata=bytes()
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.INFO)
         self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -51,47 +52,84 @@ class Server:
             self.s.listen(0)
             self.logger.info('[ Server started at : '+self.req+' ] ')
             while True:
-                try:
+                #try:
                     self.protocol:str='Preliminaries'
-                    self.recv_head()
-                    self.recv_server()
-                    self.json_decompress()
+                    self.receive_function()
                     self.protocol_execution()
-                    self.recv_head()
-                    self.recv_server()
-                    self.json_decompress()
-                    self.protocol_execution()
-                except Exception as e:
-                    self.error_handler(e)
+                #except Exception as e:
+                    #self.error_handler(e)
 
-    def server_hello(self):
+    def receive_function(self):
+        self.recv_head()
+        self.recv_server()
+        self.json_decompress()
+
+    def response_function(self):
+        if self.Token_DB[self.atoken.encode()]['User addres']==self.ip:
+            self.reqdata=self.decryption_aes(base64.b85decode(self.master_secret))
+            self.logger.info(str(self.addr)+' [ get request ]: '+self.reqdata.decode())
+            self.Create_json_object(content_type='server_master_secret',platform='server',version='0.2.6',
+                                        protocol='response',master_secret=self.reqdata.decode())
+            self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+            self.send(self.verified_jsobj_dump)
+        else:
+            self.error_handler('An attempt to sign up from another region was detected during member registration.')
+
+    def protocol_execution(self):
+        if (self.content_type=='handshake' and self.protocol=='client_hello'):
+            self.server_hello()
+        elif (self.content_type=='handshake' and self.protocol=='client_key_exchange'):
+            self.Create_master_secret()
+        elif (self.content_type=='client_master_secret' and self.protocol=='Sign_Up'):
+            self.Sign_Up_function()
+        elif (self.content_type=='client_master_secret' and self.protocol=='request'):
+            self.response_function()
+        else:
+            self.error_handler()
+
+    def Sign_Up_function(self):
+        if self.Token_DB[self.atoken.encode()]['User addres']==self.ip:
+            self.Decrypt_user_data()
+            self.SignUp()
+            self.session_classifier()
+            self.Create_json_object(content_type='Sign_Up-report',platform='server',version='0.2.6',
+                                        protocol='welcome! '+str(self.verified_UserID),)
+            self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+            self.send(self.verified_jsobj_dump)
+        else:
+            self.error_handler('An attempt to sign up from another region was detected during member registration.')
+
+    def server_hello(self,set_version='0.2.8'):
          self.token=self.L.Random_Token_generator()
-         self.Create_json_object(content_type='handshake',platform='servserclient',version='0.2.6',
+         self.Create_json_object(content_type='handshake',platform='server',version=set_version,
                                               protocol='server_hello',random_token=self.token.decode(),random_token_length=len(self.token),
                                               public_key=self.pul_key,public_key_length=len(self.pul_key))
-         self.send(self.jsobj_dump)
+         self.send(self.jsobj_dump.encode())
          self.logger.info(str(self.addr)+' [ server hello transmission complete ]: '+self.protocol)
-         self.logger.info(str(self.addr)+' [ response complete ]: '+self.protocol)
          self.c.close()
          return self.jsobj_dump
          
 
-    def Create_master_secret(self):
-        self.master_key=base64.b85decode(self.master_key)
-        self.master_key=self.decryptio_rsa(self.prv_key,self.master_key)
+    def Create_master_secret(self,set_version='0.2.8'):
+        self.master_key=self.decryption_rsa(self.prv_key,base64.b85decode(self.pre_master_key))
+        print(self.master_key)
         self.Token,self.Token_data=self.L.Access_Token_generator(16,self.ip,self.internal_ip)
         self.logger.info(str(self.addr)+' [ Token Issued ]: '+str(self.Token))
-        self.Token_DB[self.Token]=self.Token_data
-        self.session_keys[self.Token]=self.master_key
+        self.Token_DB.setdefault(self.Token,self.Token_data)
+        self.session_keys.setdefault(self.Token,self.master_key)
         self.logger.info(str(self.addr)+' [ Session creation complete ]: '+self.protocol)
-        self.logger.info(str(self.addr)+' [ response complete ]: '+self.protocol)
         self.logger.info(str(self.addr)+' [ Master secret creation complete ]: '+self.protocol)
-        self.c.close()
+        self.Create_json_object(content_type='server_master_secret',platform='server',version=set_version,
+                                              protocol='access_tokens',access_token=self.Token.decode(),access_token_length=len(self.Token))
+        self.send(self.jsobj_dump.encode())
+        self.logger.info(str(self.addr)+' [ Access token sent ]: '+self.protocol)
 
     def send(self,data:str):
-        self.c.send(self.merge_data(data.encode()))
+        self.c.send(self.merge_data(data))
+        self.logger.info(str(self.addr)+' [ response complete ]: '+self.protocol)
+        self.c.close()
 
-    def merge_data(self,data:str):
+    def merge_data(self,data:bytes):
         self.body=base64.b85encode(data)
         self.head=struct.pack("I",len(self.body))
         self.send_data=self.head+self.body
@@ -128,29 +166,46 @@ class Server:
         #except:
             #print('An unexpected error occurred')
 
+
     def json_decompress(self):
         self.recv_datas=base64.b85decode(self.recv_datas).decode()
-        self.jsobj = json.loads(self.recv_datas)
-        self.client_version=self.jsobj["version"]
-        self.rtoken=self.jsobj['body']['random_token']
-        self.atoken=self.jsobj['body']['access_token']
-        self.platform=self.jsobj["platform"]
-        self.internal_ip=self.jsobj["addres"]
-        self.protocol=self.jsobj['body']["protocol"]
-        self.content_type=self.jsobj["content-type"]
-        self.UserName=self.jsobj['body']["userid"]
-        self.Userpwrd=self.jsobj['body']['userpw']
-        self.master_key=self.jsobj['body']['master_secret']
-        self.logger.info(str(self.addr)+' [ variable assignment done ]: '+self.protocol)
+        self.logger.info(str(self.addr)+str(self.recv_datas)+self.protocol)
+        try:
+            self.jsobj = json.loads(self.recv_datas)
+            self.client_version=self.jsobj["version"]
+            self.rtoken=self.jsobj['body']['random_token']
+            self.atoken=self.jsobj['body']['access_token']
+            self.platform=self.jsobj["platform"]
+            self.internal_ip=self.jsobj["addres"]
+            self.protocol=self.jsobj['body']["protocol"]
+            self.content_type=self.jsobj["content-type"]
+            self.Cypher_userid=self.jsobj['body']["userid"]
+            self.Cypher_userpw=self.jsobj['body']['userpw']
+            self.pre_master_key=self.jsobj['body']['pre_master_key']
+            self.master_secret=self.jsobj['body']['master_secret']
+            self.logger.info(str(self.addr)+' [ variable assignment done ]: '+self.protocol)
+        except json.decoder.JSONDecodeError as e:
+            self.jsobj = self.recv_datas[:len(self.recv_datas)-80]
+            self.hmac_hash=base64.b85decode((self.recv_datas[len(self.recv_datas)-80:].encode()))
+            self.logger.info(str(self.addr)+' [ hmac hash scanned ]: '+self.protocol)
+            if self.hmac_hash==hmac.digest(self.master_key,self.jsobj.encode(),blake2b):
+                self.jsobj = json.loads(self.recv_datas[:len(self.recv_datas)-80])
+                self.client_version=self.jsobj["version"]
+                self.rtoken=self.jsobj['body']['random_token']
+                self.atoken=self.jsobj['body']['access_token']
+                self.platform=self.jsobj["platform"]
+                self.internal_ip=self.jsobj["addres"]
+                self.protocol=self.jsobj['body']["protocol"]
+                self.content_type=self.jsobj["content-type"]
+                self.Cypher_userid=self.jsobj['body']["userid"]
+                self.Cypher_userpw=self.jsobj['body']['userpw']
+                self.pre_master_key=self.jsobj['body']['pre_master_key']
+                self.master_secret=self.jsobj['body']['master_secret']
+                self.session_data.setdefault(self.atoken,[self.Cypher_userid,self.Cypher_userpw])
+                self.logger.info(str(self.addr)+' [ variable assignment done ]: '+self.protocol)
+            else:
+                self.error_handler('Message tampering confirmed')
         return
-
-    def protocol_execution(self):
-        if (self.content_type=='handshake' and self.protocol=='client_hello'):
-            self.server_hello()
-        elif (self.content_type=='handshake' and self.protocol=='client_key_exchange'):
-            self.Create_master_secret()
-        else:
-            self.error_handler()
 
     def error_handler(self,msg="None"):
         self.logger.info(str(self.addr)+' [ unexpected error ]: '+str(msg))
@@ -158,13 +213,12 @@ class Server:
                                             protocol='error',
                                             server_error=' [ unexpected error ]: '+str(msg))
         self.send(self.jsobj_dump)
-        self.logger.info(str(self.addr)+' [ response complete ]: '+self.protocol)
         self.c.close()
 
     def Create_json_object(self,content_type=None,platform=None,version=None,
                                         protocol=None,random_token=None,random_token_length=None,
                                         public_key=None,public_key_length=None,server_error=None,
-                                        access_token=None,access_token_length=None):
+                                        access_token=None,access_token_length=None,master_secret=None):
         self.jsobj={
             'content-type':content_type, 
             'platform':platform,
@@ -176,76 +230,73 @@ class Server:
                         'access_token_length':access_token_length,
                         'public-key':public_key,
                         'public-key_length':public_key_length,
+                        'master_secret':master_secret,
                         'server_error':server_error
                         }
          }
         self.jsobj_dump= json.dumps(self.jsobj,indent=2)
+        self.logger.info(str(self.addr)+str(self.jsobj_dump)+self.protocol)
         return self.jsobj_dump
 
+    def Decrypt_user_data(self):
+        self.session_data.setdefault(self.atoken,[self.Cypher_userid,self.Cypher_userpw])
+        self.userid=self.decryption_aes(base64.b85decode(self.session_data[self.atoken][0]))
+        self.userpw=self.decryption_aes(base64.b85decode(self.session_data[self.atoken][1]))
+        self.session_data.update({self.atoken:[self.userid.decode(),self.userpw.decode()]})
+        return self.userid,self.userpw
+
     def session_classifier(self):
-        userid=self.uid
-        if (userid=='Guest' or userid=='guest' or userid=='__Guest__' or userid=='__guest__'):
+        self.verified_UserID=self.session_data[self.atoken][0]
+        self.verified_Userpw=self.session_data[self.atoken][1]
+        if (self.verified_UserID=='Guest' or self.verified_UserID=='guest' or self.verified_UserID=='__Guest__' or self.verified_UserID=='__guest__'):
              self.guest_session_creator()
-        elif (self.ip=='127.0.0.1'):
+        elif (self.Token_DB[self.atoken.encode()]['User addres']=='127.0.0.1'):
             self.admin_session_creator()
         else:
             self.session_creator()
-        return userid
+        return self.verified_UserID
 
     def admin_session_creator(self):
-        self.new_session={self.Token:{'user_id':self.uid,'user_pw':self.upw,'permission_lv':0,'class':'__administrator__'}}
-        self.new_session[self.Token].update(self.Token_data)
+        self.new_session={self.Token:{'user_id':self.verified_UserID,'user_pw':self.verified_Userpw,'permission_lv':0,'class':'__administrator__'}}
+        self.new_session[self.Token].update(Token_DB[self.Token])
         self.sessions.append(self.new_session)
+        self.logger.info(str(self.addr)+str(self.new_session)+self.protocol)
         self.logger.info(str(self.addr)+' [ Session assignment complete ]: '+self.protocol)
         return self.new_session
 
     def session_creator(self):
-        self.new_session={self.Token:{'user_id':self.uid,'user_pw':self.upw,'permission_lv':1,'class':'__user__'}}
-        self.new_session[self.Token].update(self.Token_data)
+        self.new_session={self.Token:{'user_id':self.verified_UserID,'user_pw':self.verified_Userpw,'permission_lv':1,'class':'__user__'}}
+        self.new_session[self.Token].update(Token_DB[self.Token])
         self.sessions.append(self.new_session)
+        self.logger.info(str(self.addr)+str(self.new_session)+self.protocol)
         self.logger.info(str(self.addr)+' [ Session assignment complete ]: '+self.protocol)
         return self.new_session
 
     def guest_session_creator(self):
-        self.new_session={self.Token:{'user_id':self.uid+str(os.urandom(8)),'user_pw':str(os.urandom(16)),'permission_lv':1,'class':'__guest__'}}
-        self.new_session[self.Token].update(self.Token_data)
+        self.new_session={self.Token:{'user_id':self.verified_UserID+str(os.urandom(8)),'user_pw':str(os.urandom(16)),'permission_lv':1,'class':'__guest__'}}
+        self.new_session[self.Token].update(Token_DB[self.Token])
         self.sessions.append(self.new_session)
+        self.logger.info(str(self.addr)+str(self.new_session)+self.protocol)
         self.logger.info(str(self.addr)+' [ Session assignment complete ]: '+self.protocol)
         return self.new_session
 
-    # def recv_keys(self):
-    #     while True:
-    #         self.recv_datas=bytes()
-    #         if self.head<2048:
-    #             self.recv_datas=self.c.recv(self.head)
-    #             self.recv_datas=base64.b64decode(self.recv_datas)
-    #         elif self.head>=2048:
-    #             self.recv_datas=bytearray()
-    #             for i in range(int(self.head/2048)):
-    #                 self.recv_datas.append(self.c.recv(2048))
-    #                 print("  [ Downloading "+str(self.addr)+" : "+str(2048*i/self.head*100)+" % ] "+" [] Done... ] ")
-    #             print("  [ Downloading "+str(self.addr)+"100 % ] [ Done... ]",'\n')
-    #             self.recv_datas=base64.b64decode(bytes(self.recv_datas))
-    #         print("  [ Received | Key ] ")
-    #         return self.recv_datas
-
     def SignUp(self):
-        self.UserID=self.uid
-        self.Userpwrd=self.upw
+        self.UserID=self.session_data[self.atoken][0]
+        self.Userpwrd=self.session_data[self.atoken][1]
         if (" " not in self.UserID and "\r\n" not in self.UserID and "\n" not in self.UserID and "\t" not in self.UserID and re.search('[`~!@#$%^&*(),<.>/?]+', self.UserID) is None):
             if (len( self.Userpwrd) > 8 and re.search('[0-9]+', self.Userpwrd) is not None and re.search('[a-zA-Z]+', self.Userpwrd) is not None and re.search('[`~!@#$%^&*(),<.>/?]+', self.Userpwrd) is not None and " " not in self.Userpwrd):
-                self.Token_DB.update(self.temp_db)
-                self.Token_data['SignUp']=True
+                self.Token_DB[self.atoken.encode()]['SignUp']=True
                 self.basepw=base64.b85encode(self.Userpwrd.encode())
                 self.result=bytearray()
                 for i in range(len(self.basepw)):
-                    self.result.append(self.basepw[i]^self.Token[i%len(self.Token)])
+                    self.result.append(self.basepw[i]^self.atoken.encode()[i%len(self.atoken)])
                 self.result=bytes(self.result)
-                self.Userpwrd=self.L.pwd_hashing(bytes(self.result))
-                self.upw=self.Userpwrd
-                self.SignUp_data=[{'userid':self.UserID},{'userpw':self.Userpwrd}]
-                self.logger.info(str(self.addr)+' [ User information update ]: '+self.UserID)
-                return self.SignUp_data
+                self.verified_Userpw=self.L.pwd_hashing(bytes(self.result))
+                self.verified_UserID=self.UserID
+                self.session_data.update({self.atoken:[self.verified_UserID,self.verified_Userpw]})
+                self.logger.info(str(self.addr)+str({self.atoken:[self.verified_UserID,self.verified_Userpw]})+self.protocol)
+                self.logger.info(str(self.addr)+' [ User info update ]: '+self.UserID)
+                return self.session_data
             else:
                 raise  Exception("Your password is too short or too easy. Password must be at least 8 characters and contain numbers, English characters and symbols. Also cannot contain whitespace characters.")
         else:
@@ -285,29 +336,28 @@ class Server:
 
     def hmac_cipher(self,data:bytes):
         self.hmac_data=hmac.digest(self.master_key,data,blake2b)
-        self.verified_data=data+self.hmac_data
+        self.verified_data=data+base64.b85encode(self.hmac_data)
         self.logger.info(str(self.addr)+' [ hmac applied ]: '+self.protocol)
         return self.verified_data
 
-    def decryptio_rsa(self,set_prv_key:bytes,encrypt_data:bytes):
+    def decryption_rsa(self,set_prv_key:bytes,encrypt_data:bytes):
         private_key = RSA.import_key(set_prv_key)
         cipher_rsa = PKCS1_OAEP.new(private_key)
         self.decrypt_data=base64.b85decode(cipher_rsa.decrypt(encrypt_data))
         self.logger.info(str(self.addr)+' [ key decryption complete ]: '+self.protocol)
         return self.decrypt_data
 
-    def Decryption(self,set_data:bytes,set_addr):
-        self.data=set_data
+    def decryption_aes(self,set_data):
         self.temp=list
-        nonce=self.data[:16]
-        tag=self.data[16:32]
-        ciphertext =self.data[32:-1]+self.data[len(self.data)-1:]
-        session_key = self.L.token_address_explorer(set_addr)
+        nonce=set_data[:16]
+        tag=set_data[16:32]
+        ciphertext =set_data[32:-1]+set_data[len(set_data)-1:]
+        session_key = self.session_keys[self.atoken.encode()]
         cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
-        data = base64.b64decode(cipher_aes.decrypt_and_verify(ciphertext, tag))
-        self.userdata=data
+        data = cipher_aes.decrypt_and_verify(ciphertext, tag)
+        self.decrypt_data=base64.b85decode(data)
         self.logger.info(str(self.addr)+' [ data decryption complete ]: '+self.protocol)
-        return data
+        return self.decrypt_data
 
     def Server_DB_checker(self):
         #try:
@@ -503,6 +553,3 @@ class administration:
             json.dump(json_obj, f, indent=2,default=str)
         print(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), self.addr2 ,' [ Settings saved ] ')
         return json_obj
-
-th =threading .Thread (target =Server().start_server ).start()
-
