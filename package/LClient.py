@@ -86,7 +86,7 @@ class Client:
         self.send(self.verified_jsobj_dump)
 
     def cookie_checker(self):
-        self.dir=os.listdir(os.path.dirname(os.path.realpath(__file__)))
+        self.dir=os.listdir(os.getcwd())
         if ('cookie' in self.dir):
             return True
 

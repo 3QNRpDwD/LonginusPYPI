@@ -117,7 +117,7 @@ class Server:
             self.error_handler('The user could not be found. Please proceed to sign up')
 
     def session_checker(self):
-        self.dir=os.listdir(os.path.dirname(os.path.realpath(__file__)))
+        self.dir=os.listdir(os.getcwd())
         if ('Sessions' in self.dir and 'Session_data' in self.dir and 'Session_keys' in self.dir and 'port' in self.dir and 'addr' in self.dir and 'Login_list' in self.dir):
             self.loading()
             return True
