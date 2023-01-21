@@ -1,15 +1,14 @@
-from Cryptodome.Cipher import AES #line:32
+from Cryptodome.Cipher import AES
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import PKCS1_OAEP
-import subprocess,threading,sys,os
+import os
 from socket import *
 from getpass import *
 from datetime import datetime
 from asyncio import *
-import PyQt5
 from hashlib import blake2b
 from argon2 import PasswordHasher
-import msvcrt,re,secrets,base64,requests,hmac
+import secrets,base64
 
 
 __all__=['Longinus']
@@ -27,7 +26,7 @@ class Longinus:
             self.Random_Token=base64.b85encode(bytes(self.Random_Token))
             return self.Random_Token
 
-    def Access_Token_generator(self,length:int=16,set_addres:str=None,set_internal_ip=None):
+    def session_id_generator(self,length:int=16,set_addres:str=None,set_internal_ip=None):
             self.length=length
             self.Usera_addres=set_addres
             self.internal_ip=set_internal_ip
@@ -36,7 +35,7 @@ class Longinus:
             for i in range(len(self.Token)):
                 self.Access_Token.append(self.Token[i]^self.UserID[i%self.length])
             self.Access_Token=base64.b85encode(bytes(self.Access_Token))
-            self.Token_data={'Time Stamp':(str(datetime.now().timestamp())),'User addres':self.Usera_addres,'internal_ip':self.internal_ip,'SignUp':False}
+            self.Token_data={'Time Stamp':(str(datetime.now().timestamp())),'User addres':self.Usera_addres,'internal_ip':self.internal_ip}
             self.TokenDB[self.Access_Token]=self.Token_data
             return self.Access_Token,self.Token_data
 
