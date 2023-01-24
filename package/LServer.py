@@ -15,7 +15,7 @@ from multiprocessing import Process
 __all__=['Server']
 
 
-Login_list:list=list();path:str=r'C:\Users\Eternal_Nightmare0\Desktop\Project-Longinus\package\LonginusPYPL';set_port:int=9997;set_addr:str='0.0.0.0';
+set_port:int=9997;set_addr:str='0.0.0.0';
 s=socket();
 ip:str=str();Token:bytes=bytes();Token_data:dict=dict();Token_DB:dict=dict()
 rdata:str='';platform:str='shell';head='';c='';addr='';Token_RSA:bytes=bytes();RSA_Key:dict=Longinus().Create_RSA_key()
@@ -25,12 +25,12 @@ Server_DB:dict=dict();new_session:dict=dict()
 class Server:
 
     L= Longinus()
-    def __init__(self):
-        self.set_port=set_port;self.set_addr=set_addr;self.path=path;self.cipherdata=bytes();self.decrypt_data=bytes()
+    def __init__(self,version='0.4.6',port=set_port,addres=set_addr):
+        self.set_port=port;self.set_addr=addres;self.cipherdata=bytes();self.decrypt_data=bytes()
         self.s=s;self.ip=ip;self.session_id=Token;self.Login_list='Login_list';self.body=bytes();self.temp_db=None;self.prv_key=prv_key
         self.session_id_data=Token_data;self.session_db=Token_DB;self.rdata=rdata;self.platform=platform;self.pul_key=pul_key
         self.head=head;self.c=c;self.addr=addr;self.session_id_RSA=Token_RSA;self.address=address;self.sessions=sessions
-        self.pul_key=pul_key;self.userdata=userdata;self.Server_DB=Server_DB;self.new_session=new_session;self.temp=''
+        self.pul_key=pul_key;self.userdata=userdata;self.Server_DB=Server_DB;self.new_session=new_session;self.temp='';self.set_version=version
         self.jsobj:str;self.client_version:str;self.rtoken:bytes;self.session_id:str;self.platform:str;self.internal_ip:str;self.master_keys=list()
         self.protocol:str='Preliminaries';self.content_type:str;self.hmac_hash=bytes();self.Cypher_userid=bytes();self.Cypher_userpw=bytes()
         self.userid=str();self.userpw=str();self.temporary_data=list();self.pre_master_key=bytes();self.reqdata=bytes();self.master_key=bytes()
@@ -50,21 +50,22 @@ class Server:
         self.login_session=dict()
         self.login_session_keys=dict()
         self.login_id=bytes();self.login_db=dict()
+        self.ph=PasswordHasher()
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     def service(self):
         while True:
-            try:
             #try:
-                self.session_id:str=''
-                self.receive_function()
-                self.protocol_execution()
+                try:
+                    self.session_id:str=''
+                    self.receive_function()
+                    self.protocol_execution()
+                except OSError:
+                    self.c,self.addr=self.s.accept();
             #except Exception as e:
-                #self.error_handler(str(e).encode())
-            except OSError:
-                self.c,self.addr=self.s.accept();
+                #self.error_handler(str(e))
 
     def run_service(self):
         self.req = requests.get("http://ipconfig.kr")
@@ -111,9 +112,9 @@ class Server:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def server_hello(self,set_version='0.4.4'):
+    def server_hello(self):
          self.token=self.L.Random_Token_generator()
-         self.Create_json_object(content_type='handshake',platform='server',version=set_version,
+         self.Create_json_object(content_type='handshake',platform='server',version=self.set_version,
                                               protocol='server_hello',random_token=self.token.decode(),random_token_length=len(self.token),
                                               public_key=self.pul_key,public_key_length=len(self.pul_key))
          self.send(self.jsobj_dump.encode())
@@ -125,8 +126,8 @@ class Server:
         self.session_creation()
         self.logger.info(str(self.addr)+' [ Master secret creation complete ] ')
 
-    def ChangeCipherSpec_Finished(self,set_version='0.4.4'):
-        self.Create_json_object(content_type='handshake',platform='server',version=set_version,
+    def ChangeCipherSpec_Finished(self):
+        self.Create_json_object(content_type='handshake',platform='server',version=self.set_version,
                                               protocol='Change_Cipher_Spec',
                                               session_id=self.session_id.decode(),session_id_length=len(self.session_id))
         self.logger.info(str(self.addr)+' [ Change Cipher Spec-Finished ] ')
@@ -137,62 +138,64 @@ class Server:
 #===================================================================================================================================#
 
     def Sign_Up_function(self):
-        if self.Check_Session_key()==True:
-            print(self.content_type,self.protocol)
-            self.Decrypt_user_data()
-            self.string_check()
-            if self.duplicate_inspection() == True:
-                self.new_database_definition()
-                self.logger.info(str(self.addr)+' [ User info update ]: '+self.UserID)
-                self.Create_json_object(content_type='Sign_Up-report',platform='server',version='0.4.4',
-                                            protocol='Sign_up_complete')
-                self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
-                self.send(self.verified_jsobj_dump)
-                self.c.close()
+        self.master_key=self.session_keys[self.client_session_id.encode()]
+        self.Decrypt_user_data()
+        self.string_check()
+        self.verified_Userpw=self.pwd_hashing(self.verified_Userpw)
+        if self.name_duplicate_check() == False:
+            self.new_database_definition()
+            self.logger.info(str(self.addr)+' [ User info update ]: '+self.UserID)
+            self.Create_json_object(content_type='Sign_Up-report',platform='server',version=self.set_version,
+                                        protocol='Sign_up_complete')
+            self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+            self.send(self.verified_jsobj_dump)
+            self.c.close()
+        else:
+            self.error_handler('A user with the same name already exists')
 
     def login_function(self):
-        if self.Check_Session_key()==True:
-            self.Decrypt_user_data()
-            self.string_check()                        
-            for DB in self.database:
-                if DB['user_id']==self.verified_UserID:
-                    print(DB['user_pw'],self.verified_Userpw)
-                    if PasswordHasher().verify(DB['user_pw'],self.Userpwrd)==True:
-                        self.login_session_creation(DB)
-                        self.discard_session()
-                        self.saver()
-                        self.Create_json_object(content_type='login-report',platform='server',version='0.4.4',
-                                                    protocol='welcome! ',
-                                                    login_id=self.login_id.decode(),login_id_length=len(self.login_id))
-                        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
-                        self.send(self.verified_jsobj_dump)
-                        self.c.close()
-                    else: self.error_handler('The password does not match the supplied hash')
-                else: self.error_handler('The user could not be found. Please proceed to sign up')
+        self.master_key=self.session_keys[self.client_session_id.encode()]
+        self.Decrypt_user_data()
+        self.string_check()                        
+        for DB in self.database:
+            if DB['user_id']==self.verified_UserID:
+                #try:
+                if self.ph.verify(DB['user_pw'],self.verified_Userpw):
+                    self.login_session_creation(DB)
+                    self.discard_session()
+                    self.saver()
+                    self.Create_json_object(content_type='login-report',platform='server',version=self.set_version,
+                                                protocol='welcome! ',
+                                                login_id=self.login_id.decode(),login_id_length=len(self.login_id))
+                    self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+                    self.send(self.verified_jsobj_dump)
+                    self.c.close()
+                #except VerifyMismatchError: self.error_handler('The password does not match the supplied hash')
+            else: self.error_handler('The user could not be found. Please proceed to sign up')
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def response_function(self,version='0.4.4'):
-        print(self.login_session_keys)
+    def response_function(self):
         self.master_key=self.login_session_keys[self.client_login_id.encode()]
         self.reqdata=self.decryption_aes(base64.b85decode(self.master_secret))
         self.logger.info(str(self.addr)+' [ get request ]: '+self.reqdata.decode())
-        self.Check_Session_key()
-        self.Create_json_object(content_type='server_master_secret',platform='server',version='0.4.4',login_id=self.client_login_id,
-                                    protocol='response',master_secret=base64.b85encode(self.encryption_aes(self.reqdata)).decode())
-        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
-        self.send(self.verified_jsobj_dump)
-        self.c.close()
-        #else:
-            #self.error_handler('An attempt to sign up from another region was detected during member registration.')
+        print(self.login_session.keys())
+        if self.client_login_id.encode() in self.login_session.keys():
+            self.Create_json_object(content_type='server_master_secret',platform='server',version=self.set_version,login_id=self.client_login_id,
+                                        protocol='response',master_secret=base64.b85encode(self.encryption_aes(self.reqdata)).decode())
+            self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+            self.send(self.verified_jsobj_dump)
+            self.c.close()
+        else:
+            self.error_handler('Invalid login ID')
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     def error_handler(self,msg="None"):
         self.logger.info(str(self.addr)+' [ unexpected error ]: '+msg)
-        self.Create_json_object(content_type='return_error',platform='server',version='0.4.4',
+        self.Create_json_object(content_type='return_error',platform='server',version=self.set_version,
                                             protocol='error',
                                             server_error=' [ unexpected error ]: '+msg)
         self.send(self.jsobj_dump.encode())
@@ -204,8 +207,7 @@ class Server:
     def new_database_definition(self):
         if self.permission_checker()==True:
             self.database_creation(self.verified_UserID,self.verified_Userpw,'__administrator__',0)
-        else:
-            self.database_creation(self.verified_UserID,self.verified_Userpw,'__user__',1)
+        else: self.database_creation(self.verified_UserID,self.verified_Userpw,'__user__',1)
 
     def database_creation(self,user_id='user',user_pw='user1234@@!',group='__user__',permission_lv=1):
         self.new_database={'user_id':user_id,'user_pw':user_pw,'permission_lv':permission_lv,'group':group}
@@ -382,7 +384,7 @@ class Server:
 
     def encryption_aes(self,data:bytes):
          self.data=base64.b85encode(data)
-         self.send_data=bytes
+         self.send_data=bytes()
          cipher_aes = AES.new(self.master_key, AES.MODE_EAX)
          ciphertext, tag = cipher_aes.encrypt_and_digest(self.data)
          self.send_data= cipher_aes.nonce+ tag+ ciphertext
@@ -411,29 +413,12 @@ class Server:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def Check_Session_key(self):
-        for s,m in self.session_keys.items():
-            if s == self.client_session_id.encode():
-                self.master_key=m
-                return True
-
-    def Check_Session_key(self):
-        for s,m in self.session_keys.items():
-            if s == self.client_session_id.encode():
-                self.master_key=m
-                return True
-
-
-    def duplicate_inspection(self):
+    def name_duplicate_check(self):
         if len(self.database) != 0:
             for DB in self.database:
-                if (DB['user_id']!=self.verified_UserID):
-                    return True
-                else:
-                    self.error_handler('Rename')
-                    return False
+                return DB['user_id']==self.verified_UserID
         else:
-            return True
+            return False
 
     def Session_credentials(self):
         if (self.hmac_hash==hmac.digest(self.master_key,self.jsobj.encode(),blake2b) and self.session_db[self.session_id.encode()]['User addres']==self.ip):
@@ -460,19 +445,22 @@ class Server:
         self.Userpwrd=self.userpw.decode()
         if (" " not in self.UserID and "\r\n" not in self.UserID and "\n" not in self.UserID and "\t" not in self.UserID and re.search('[`~!@#$%^&*(),<.>/?]+', self.UserID) is None):
             if (len( self.Userpwrd) > 8 and re.search('[0-9]+', self.Userpwrd) is not None and re.search('[a-zA-Z]+', self.Userpwrd) is not None and re.search('[`~!@#$%^&*(),<.>/?]+', self.Userpwrd) is not None and " " not in self.Userpwrd):
-                print(self.Userpwrd)
-                self.verified_Userpw=self.L.pwd_hashing(self.Userpwrd)
-                print(self.Userpwrd)
-                self.logger.info(str(self.addr)+' [ PasswordHashing complete ]: '+str(PasswordHasher().verify(self.verified_Userpw,self.Userpwrd)))
                 self.verified_UserID=self.UserID
+                self.verified_Userpw=self.Userpwrd
+                print(self.verified_UserID,self.verified_Userpw)
                 return self.verified_UserID,self.verified_Userpw
             else:
                 self.error_handler("Your password is too short or too easy. Password must be at least 8 characters and contain numbers, English characters and symbols. Also cannot contain whitespace characters.")
         else:
             self.error_handler("Name cannot contain spaces or special characters")
 
+    def pwd_hashing(self,pwd):
+        while True:
+            temp=self.ph.hash(pwd)
+            if (self.ph.verify(temp,pwd) and self.ph.check_needs_rehash(temp)!=True):
+                break
+        self.logger.info(str(self.addr)+' [ Password hashing success ] ')
+        return temp
+
 #===================================================================================================================================#
 #===================================================================================================================================#
-
-Server().run()
-

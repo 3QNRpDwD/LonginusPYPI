@@ -73,10 +73,3 @@ class Longinus:
         except TypeError as e:
             raise Exception(str(e))
         return {"private_key":self.path+"\\"+"private_key.pem","public_key":self.path+"\\"+"public_key.pem"}
-
-    def pwd_hashing(self,pwd):
-        ph=PasswordHasher()
-        while True:
-            temp=ph.hash(pwd)
-            if (ph.verify(temp,pwd)!=True and ph.check_needs_rehash(temp)!=False):
-                return temp
