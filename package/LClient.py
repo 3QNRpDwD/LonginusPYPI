@@ -25,6 +25,9 @@ class Client:
         self.Cypher_userid=bytes();self.Cypher_userpw=bytes();self.header=bytes();self.session_id=bytes()
         self.cookie=dict();self.temp_userid=bytes();self.temp_userpw=bytes()
 
+#===================================================================================================================================#
+#===================================================================================================================================#
+
     def client_start(self):
         self.addr=input('Enter the server address to connect to : ');self.port=int(input('Enter the server port to connect to : '))
         try:
@@ -43,14 +46,21 @@ class Client:
         except ConnectionRefusedError:
             print('server not found')
 
-    def request(self,set_version='0.2.8'):
-        self.req=input('send : ')
-        self.Cypher_data=base64.b85encode(self.encryption_aes(self.req.encode())).decode()
-        self.Create_json_object(content_type='client_master_secret',platform='client',version=set_version,
-                                        addres=gethostbyname(gethostname()),protocol='request',session_id=self.session_id,
-                                        session_id_length=len(self.session_id),master_secret=self.Cypher_data)
-        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
-        self.send(self.verified_jsobj_dump)
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def client_hello(self,set_version='0.2.8'):
+        self.rtoken=self.L.Random_Token_generator()
+        self.Create_json_object(content_type='handshake',platform='client',version=set_version,
+                                            addres=gethostbyname(gethostname()),protocol='client_hello',
+                                            random_token=self.rtoken.decode(),random_token_length=len(self.rtoken),
+                                            )
+        self.s=socket()
+        self.s.connect((self.addr,self.port))
+        self.send(self.jsobj_dump.encode())
+
+#===================================================================================================================================#
+#===================================================================================================================================#
 
     def receive_function(self):
         self.recv_head()
@@ -58,65 +68,31 @@ class Client:
         self.json_decompress()
         self.error_detector()
 
-    def login_function(self,set_version='0.2.8'):
-        self.injecter()
-        self.string_check()
-        self.Cypher_userid=base64.b85encode(self.encryption_aes(self.verified_userid.encode())).decode()
-        self.Cypher_userpw=base64.b85encode(self.encryption_aes(self.verified_userpw.encode())).decode()
-        self.Cypherdata=base64.b85encode(self.encryption_rsa(self.pul_key,self.master_key)).decode()
-        self.Create_json_object(content_type='client_master_secret',platform='client',version=set_version,
-                                            addres=gethostbyname(gethostname()),protocol='login',pre_master_key=self.Cypherdata,
-                                            userid=self.Cypher_userid,userpw=self.Cypher_userpw)
-        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
-        print(self.verified_jsobj_dump)
-        self.send(self.verified_jsobj_dump)
+#===================================================================================================================================#
+#===================================================================================================================================#
 
-    def Sign_Up_function(self,set_version='0.2.8'):
-        self.injecter()
-        self.string_check()
-        self.Cypher_userid=base64.b85encode(self.encryption_aes(self.verified_userid.encode())).decode()
-        self.Cypher_userpw=base64.b85encode(self.encryption_aes(self.verified_userpw.encode())).decode()
-        self.Cypherdata=base64.b85encode(self.encryption_rsa(self.pul_key,self.master_key)).decode()
-        self.Create_json_object(content_type='client_master_secret',platform='client',version=set_version,
-                                            addres=gethostbyname(gethostname()),protocol='Sign_Up',
-                                            userid=self.Cypher_userid,userpw=self.Cypher_userpw,pre_master_key=self.Cypherdata)
-        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
-        self.s=socket()
-        self.s.connect((self.addr,self.port))
-        self.send(self.verified_jsobj_dump)
+    def protocol_execution(self):
+        if (self.content_type=='handshake' and self.protocol=='server_hello'):
+            self.client_key_exchange()
+        elif (self.content_type=='handshake' and self.protocol=='Change_Cipher_Spec'):
+            self.Sign_Up_function()
+        elif (self.content_type=='Sign_Up-report' and self.protocol=='Sign_up_complete'):
+            print('\nsign-up successful')
+            self.login_function()
+        elif (self.content_type=='login-report' and self.protocol=='welcome! '):
+            self.cookie_generator()
+            print('\nlogin successful')
+            self.request()
+        elif (self.content_type=='server_master_secret' and self.protocol=='response'):
+            self.master_secret=self.decryption_aes(base64.b85decode(self.master_secret))
+            print('server : ',self.master_secret)
+            self.request()
+        elif (self.content_type=='return_error' and self.protocol=='error'):
+            print('server : ',self.server_error)
+            self.error_detector()
 
-    def cookie_checker(self):
-        self.dir=os.listdir(os.getcwd())
-        print(self.dir)
-        if ('cookie' in self.dir):
-            return True
-
-    def cookie_generator(self):
-        self.cookie={'master_key':self.master_key,'session_id':self.session_id}
-        with open('cookie','wb') as f:
-            pickle.dump(str(self.cookie).encode(),f)
-        print(self.cookie)
-
-    def cookie_loader(self):
-        with open('cookie','rb') as f:
-            self.cookie=pickle.load(f)
-        self.cookie=eval(self.cookie.decode())
-        self.Cypher_userid=self.cookie['user_id']
-        self.Cypher_userpw=self.cookie['user_pw']
-        self.master_key=self.cookie['master_key']
-        self.session_id=self.cookie['session_id']
-        print(self.cookie)
-
-
-    def client_hello(self,set_version='0.2.8'):
-        self.s=socket()
-        self.s.connect((self.addr,self.port))
-        self.rtoken=self.L.Random_Token_generator()
-        self.Create_json_object(content_type='handshake',platform='client',version=set_version,
-                                            addres=gethostbyname(gethostname()),protocol='client_hello',
-                                            random_token=self.rtoken.decode(),random_token_length=len(self.rtoken),
-                                            )
-        self.send(self.jsobj_dump.encode())
+#===================================================================================================================================#
+#===================================================================================================================================#
 
     def client_key_exchange(self,set_version='0.2.8'):
         self.pre_master_key_generator()
@@ -128,7 +104,78 @@ class Client:
                                             pre_master_key=self.Cypherdata)
         self.send(self.jsobj_dump.encode())
         self.master_key=self.pre_master_key
+        print(self.master_key)
         self.pre_master_key=None
+
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def Sign_Up_function(self,set_version='0.2.8'):
+        print(self.master_key)
+        self.injecter()
+        self.string_check()
+        self.Cypher_userid=base64.b85encode(self.encryption_aes(self.verified_userid.encode())).decode()
+        self.Cypher_userpw=base64.b85encode(self.encryption_aes(self.verified_userpw.encode())).decode()
+        self.session_id=self.atoken
+        self.Create_json_object(content_type='client_master_secret',platform='client',version=set_version,
+                                addres=gethostbyname(gethostname()),protocol='Sign_Up',
+                                session_id=self.session_id,session_id_length=len(self.session_id),
+                                userid=self.Cypher_userid,userpw=self.Cypher_userpw)
+
+        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+        self.s=socket()
+        self.s.connect((self.addr,self.port))
+        self.send(self.verified_jsobj_dump)
+
+    def login_function(self,set_version='0.2.8'):
+        print(self.master_key)
+        self.injecter()
+        self.string_check()
+        self.Cypher_userid=base64.b85encode(self.encryption_aes(self.verified_userid.encode())).decode()
+        self.Cypher_userpw=base64.b85encode(self.encryption_aes(self.verified_userpw.encode())).decode()
+        self.Create_json_object(content_type='client_master_secret',platform='client',version=set_version,
+                                            addres=gethostbyname(gethostname()),protocol='login',pre_master_key=self.Cypherdata,
+                                            userid=self.Cypher_userid,userpw=self.Cypher_userpw)
+        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+        self.s=socket()
+        self.s.connect((self.addr,self.port))
+        self.send(self.verified_jsobj_dump)
+
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def cookie_generator(self):
+        self.cookie={'master_key':self.master_key,'session_id':self.session_id}
+        print(self.cookie)
+        with open('cookie','wb') as f:
+            pickle.dump(self.cookie,f)
+
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def request(self,set_version='0.2.8'):
+        self.req=input('send : ')
+        self.Cypher_data=base64.b85encode(self.encryption_aes(self.req.encode())).decode()
+        self.Create_json_object(content_type='client_master_secret',platform='client',version=set_version,
+                                        addres=gethostbyname(gethostname()),protocol='request',session_id=self.session_id,
+                                        session_id_length=len(self.session_id),master_secret=self.Cypher_data)
+        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+        self.s=socket()
+        self.s.connect((self.addr,self.port))
+        self.send(self.verified_jsobj_dump)
+
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def cookie_loader(self):
+        with open('cookie','rb') as f:
+            self.cookie=pickle.load(f)
+        self.master_key=self.cookie['master_key']
+        self.session_id=self.cookie['session_id']
+        print(self.cookie)
+
+#===================================================================================================================================#
+#===================================================================================================================================#
 
     def Create_json_object(self,content_type:str=None,platform:str=None,version:str=None,
                                         addres:str=None,protocol:str=None,random_token:str=None,
@@ -153,17 +200,6 @@ class Client:
          }
         self.jsobj_dump= json.dumps(self.jsobj,indent=2)
         return self.jsobj_dump
-
-
-    def merge_data(self,data:bytes):
-        self.body=base64.b85encode(data)
-        self.head=struct.pack("I",len(self.body))
-        self.send_data=self.head+self.body
-        return self.send_data
-    
-    def send(self,data:str):
-        self.s.send(self.merge_data(data))
-
 
     def json_decompress(self):
         self.recv_datas=base64.b85decode(self.recv_datas).decode()
@@ -192,51 +228,19 @@ class Client:
                 self.rsa_keys=self.jsobj['body']["public-key"]
                 self.server_error=self.jsobj['body']["server_error"]
                 self.master_secret=self.jsobj['body']['master_secret']
+        print(self.jsobj)
+        print(self.atoken)
 
-
-    def protocol_execution(self):
-        if (self.content_type=='handshake' and self.protocol=='server_hello'):
-            self.client_key_exchange()
-        elif (self.content_type=='handshake' and self.protocol=='Change_Cipher_Spec'):
-            self.Sign_Up_function()
-        elif (self.content_type=='Sign_Up-report' and self.protocol=='Sign_up_complete'):
-            print('\nsign-up successful')
-            self.login_function()
-        elif (self.content_type=='login-report' and self.protocol=='welcome! '):
-            self.cookie_generator()
-            print('\nlogin successful')
-            self.request()
-        elif (self.content_type=='server_master_secret' and self.protocol=='response'):
-            self.master_secret=self.decryption_aes(base64.b85decode(self.master_secret))
-            print('server : ',self.master_secret)
-            self.request()
-        elif (self.content_type=='return_error' and self.protocol=='error'):
-            print('server : ',self.server_error)
-            self.error_detector()
-
-    def error_detector(self):
-        if self.server_error!=None:
-            if self.server_error==' [ unexpected error ]: The user could not be found. Please proceed to sign up':
-                self.client_hello()
-            else:
-                print(self.server_error)
-                self.client_start()
-
-
-    def pre_master_key_generator(self):
-        self.pre_master_key=self.L.master_key_generator(self.token.encode(),self.rtoken)
-        return self.pre_master_key
-
-    def send_client(self,data):
-        self.s.sendall(self.merge_data(data))
+#===================================================================================================================================#
+#===================================================================================================================================#
 
     def recv_head(self):
-        #try:
-        self.header=self.s.recv(4)
-        self.header=int(str(struct.unpack("I",self.header)).split(',')[0].split('(')[1])
-        return self.header
-        #except:
-            #print('An unexpected error occurred')
+        try:
+            self.header=self.s.recv(4)
+            self.header=int(str(struct.unpack("I",self.header)).split(',')[0].split('(')[1])
+            return self.header
+        except Exception as e:
+            print(e)
 
     def recv(self):
         self.recv_datas=bytes()
@@ -252,6 +256,29 @@ class Client:
             self.recv_datas=bytes(self.recv_datas)
         return self.recv_datas
 
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def merge_data(self,data:bytes):
+        self.body=base64.b85encode(data)
+        self.head=struct.pack("I",len(self.body))
+        self.send_data=self.head+self.body
+        return self.send_data
+    
+    def send(self,data:str):
+        self.s.send(self.merge_data(data))
+
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def pre_master_key_generator(self):
+        self.pre_master_key=self.L.master_key_generator(self.token.encode(),self.rtoken)
+        return self.pre_master_key
+
+    def send_client(self,data):
+        self.s.sendall(self.merge_data(data))
+            
+
     def string_check(self):
         self.temp_data=bytearray()
         self.Userpwrd=self.pwrd.decode()
@@ -265,39 +292,23 @@ class Client:
         else:
             raise  Exception("Name cannot contain spaces or special characters")
 
-    def ReSign(self,Token:bytes):
-        pass
+#===================================================================================================================================#
+#===================================================================================================================================#
 
-    def Logout():
-        pass
+    def error_detector(self):
+        if self.server_error!=None:
+            if self.server_error==' [ unexpected error ]: The user could not be found. Please proceed to sign up':
+                self.client_hello()
+            elif self.server_error==' [ unexpected error ]: Rename':
+                print('\n')
+                print(self.server_error)
+                self.Sign_Up_function()
+            else:
+                print(self.server_error)
+                self.client_start()
 
-    def Rename():
-        pass
-
-    def Repwrd():
-        pass
-
-    def emall_verify():
-        pass
-
-    def encryption_aes(self,data:bytes):
-         self.data=base64.b85encode(data)
-         self.encrypt_data=bytes()
-         print(self.master_key)
-         cipher_aes = AES.new(self.master_key, AES.MODE_EAX)
-         ciphertext, tag = cipher_aes.encrypt_and_digest(self.data)
-         self.encrypt_data= cipher_aes.nonce+ tag+ ciphertext
-         return self.encrypt_data
-
-    def decryption_aes(self,set_data):
-        nonce=set_data[:16]
-        tag=set_data[16:32]
-        ciphertext =set_data[32:-1]+set_data[len(set_data)-1:]
-        session_key = self.master_key
-        cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
-        data = cipher_aes.decrypt_and_verify(ciphertext, tag)
-        self.decrypt_data=base64.b85decode(data)
-        return self.decrypt_data
+#===================================================================================================================================#
+#===================================================================================================================================#
 
     def hmac_cipher(self,data):
         self.hmac_data=hmac.digest(self.master_key,data,blake2b)
@@ -310,6 +321,27 @@ class Client:
         self.encrypt_data = cipher_rsa.encrypt(base64.b85encode(data))
         return self.encrypt_data
 
+    def encryption_aes(self,data:bytes):
+         self.data=base64.b85encode(data)
+         self.encrypt_data=bytes()
+         cipher_aes = AES.new(self.master_key, AES.MODE_EAX)
+         ciphertext, tag = cipher_aes.encrypt_and_digest(self.data)
+         self.encrypt_data= cipher_aes.nonce+ tag+ ciphertext
+         return self.encrypt_data
+
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def decryption_aes(self,set_data):
+        nonce=set_data[:16]
+        tag=set_data[16:32]
+        ciphertext =set_data[32:-1]+set_data[len(set_data)-1:]
+        session_key = self.master_key
+        cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
+        data = cipher_aes.decrypt_and_verify(ciphertext, tag)
+        self.decrypt_data=base64.b85decode(data)
+        return self.decrypt_data
+
     def decryptio_rsa(self,set_prv_key:str,encrypt_data:bytes):
         private_key = RSA.import_key(set_prv_key)
         cipher_rsa = PKCS1_OAEP.new(private_key)
@@ -321,6 +353,17 @@ class Client:
         cipher_rsa = PKCS1_OAEP.new(private_key)
         session_key = base64.b64decode(cipher_rsa.decrypt(self.Token))
         return session_key
+
+#===================================================================================================================================#
+#===================================================================================================================================#
+
+    def cookie_checker(self):
+        self.dir=os.listdir(os.getcwd())
+        if ('cookie' in self.dir):
+            return True
+
+#===================================================================================================================================#
+#===================================================================================================================================#
 
     def injecter(self):
         self.pwrd=bytes()
@@ -346,5 +389,7 @@ class Client:
                 self.input_num+=1
         return self.userid,self.pwrd
 
+#===================================================================================================================================#
+#===================================================================================================================================#
 
 Client().client_start()
