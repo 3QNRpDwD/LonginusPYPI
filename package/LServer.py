@@ -46,6 +46,10 @@ class Server:
         self.new_database=dict()
         self.database=list()
         self.session_keys=dict()
+        self.new_login_session=dict()
+        self.login_session=dict()
+        self.login_session_keys=dict()
+        self.login_id=bytes();self.login_db=dict()
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -63,13 +67,13 @@ class Server:
                 self.c,self.addr=self.s.accept();
 
     def run_service(self):
-        self.session_checker()
         self.req = requests.get("http://ipconfig.kr")
         self.req =str(re.search(r'IP Address : (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', self.req.text)[1])
         self.text='[ Server@'+self.req+' ~]$ '
         self.logger.info('[ Server started at : '+self.req+' ] ')
         self.s.bind((self.set_addr,self.set_port))
         self.s.listen(0)
+        self.session_checker()
         while True:
             self.c,self.addr=self.s.accept();
             self.logger.info('[ Connected with ]: '+str(self.addr))
@@ -118,11 +122,10 @@ class Server:
 
     def Create_master_secret(self):
         self.master_key=self.decryption_rsa(self.prv_key,base64.b85decode(self.pre_master_key))
-        self.master_keys.append(self.master_key)
+        self.session_creation()
         self.logger.info(str(self.addr)+' [ Master secret creation complete ] ')
 
     def ChangeCipherSpec_Finished(self,set_version='0.4.4'):
-        self.session_creation(None)
         self.Create_json_object(content_type='handshake',platform='server',version=set_version,
                                               protocol='Change_Cipher_Spec',
                                               session_id=self.session_id.decode(),session_id_length=len(self.session_id))
@@ -134,12 +137,12 @@ class Server:
 #===================================================================================================================================#
 
     def Sign_Up_function(self):
-        if self.Check_master_key()==True:
+        if self.Check_Session_key()==True:
+            print(self.content_type,self.protocol)
             self.Decrypt_user_data()
             self.string_check()
             if self.duplicate_inspection() == True:
                 self.new_database_definition()
-                self.session_creation(None)
                 self.logger.info(str(self.addr)+' [ User info update ]: '+self.UserID)
                 self.Create_json_object(content_type='Sign_Up-report',platform='server',version='0.4.4',
                                             protocol='Sign_up_complete')
@@ -148,15 +151,19 @@ class Server:
                 self.c.close()
 
     def login_function(self):
-        if self.Check_master_key()==True:
-            self.Decrypt_user_data()                            
+        if self.Check_Session_key()==True:
+            self.Decrypt_user_data()
+            self.string_check()                        
             for DB in self.database:
-                if DB['user_id']==self.temporary_data[0]:
-                    if PasswordHasher().verify(DB['user_pw'],self.temporary_data[1])==True:
-                        self.session_creation(DB)
+                if DB['user_id']==self.verified_UserID:
+                    print(DB['user_pw'],self.verified_Userpw)
+                    if PasswordHasher().verify(DB['user_pw'],self.Userpwrd)==True:
+                        self.login_session_creation(DB)
+                        self.discard_session()
                         self.saver()
                         self.Create_json_object(content_type='login-report',platform='server',version='0.4.4',
-                                                    protocol='welcome! ',session_id=self.session_id.decode())
+                                                    protocol='welcome! ',
+                                                    login_id=self.login_id.decode(),login_id_length=len(self.login_id))
                         self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
                         self.send(self.verified_jsobj_dump)
                         self.c.close()
@@ -167,10 +174,12 @@ class Server:
 #===================================================================================================================================#
 
     def response_function(self,version='0.4.4'):
+        print(self.login_session_keys)
+        self.master_key=self.login_session_keys[self.client_login_id.encode()]
         self.reqdata=self.decryption_aes(base64.b85decode(self.master_secret))
         self.logger.info(str(self.addr)+' [ get request ]: '+self.reqdata.decode())
         self.Check_Session_key()
-        self.Create_json_object(content_type='server_master_secret',platform='server',version='0.4.4',
+        self.Create_json_object(content_type='server_master_secret',platform='server',version='0.4.4',login_id=self.client_login_id,
                                     protocol='response',master_secret=base64.b85encode(self.encryption_aes(self.reqdata)).decode())
         self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
         self.send(self.verified_jsobj_dump)
@@ -202,81 +211,56 @@ class Server:
         self.new_database={'user_id':user_id,'user_pw':user_pw,'permission_lv':permission_lv,'group':group}
         self.database.append(self.new_database)
         self.logger.info(str(self.addr)+' [ New user database created ]: '+str(self.new_database))
-        self.temporary_data=list()
         return self.new_database
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def session_creation(self,data):
+    def session_creation(self):
         self.session_id,self.session_db=self.L.session_id_generator(set_addres=self.ip,set_internal_ip=self.internal_ip)
-        self.new_session={self.session_id:data}
-        self.new_session[self.session_id].update(self.session_db)
+        self.new_session={self.session_id:self.session_db}
         self.sessions.update(self.new_session)
         self.session_keys.setdefault(self.session_id,self.master_key)
         self.logger.info(str(self.addr)+str(self.new_session))
         self.logger.info(str(self.addr)+' [ Session assignment complete ]: '+str(self.session_id))
         return self.new_session
 
+    def login_session_creation(self,data):
+        self.login_id,self.login_db=self.L.session_id_generator(set_addres=self.ip,set_internal_ip=self.internal_ip)
+        self.new_login_session={self.login_id:data}
+        self.new_login_session[self.login_id].update(self.login_db)
+        self.login_session.update(self.new_login_session)
+        self.login_session_keys.setdefault(self.login_id,self.session_keys[self.client_session_id.encode()])
+        self.logger.info(str(self.addr)+str(self.new_login_session))
+        self.logger.info(str(self.addr)+' [ Session assignment complete ]: '+str(self.login_id))
+        return self.new_session
+
+    def discard_session(self):
+        self.logger.info(str(self.addr)+' [ Session discarded ]: '+str(self.client_session_id))
+        if len(self.sessions)!=0:
+            del self.sessions[self.client_session_id.encode()]
+            del self.session_keys[self.client_session_id.encode()]
+
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def saver(self):        
-        self.Sessions_saver()
-        self.DB_saver()
-        self.setting_saver()
-
-#===================================================================================================================================#
-#===================================================================================================================================#
-
-    def Sessions_saver(self):
-        self.logger.info(str(self.addr)+'[ Saving Sessions ] ')
-        with open('Sessions','wb') as f:
-            pickle.dump(self.sessions,f)
-        with open('Session_keys','wb') as f:
-            pickle.dump(self.session_keys,f)
-
-    def DB_saver(self):
-        self.logger.info(str(self.addr)+'[ Saving DB ] ')
-        with open('server_DB.DB','wb') as f:
-            pickle.dump(self.database,f) 
-
-    def setting_saver(self):
-        self.setting={'addr':self.set_addr,'port':self.set_port}
-        self.logger.info(str(self.addr)+'[ Saving setting ] ')
-        with open('setting.set','wb') as f:
-            pickle.dump(self.setting,f)
+    def saver(self):
+        self.session_setup={'login_session':self.login_session,'login_session_keys':self.login_session_keys,'database':self.database}
+        with open('user_data.set','wb') as f:
+            pickle.dump(self.session_setup,f)
+        self.logger.info(str(self.addr)+'[ save session & database]') 
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     def loader(self):
-        self.Sessions_loader()
-        self.DB_loader()
-        self.setting_loader()
+        with open('user_data.set','rb') as f:
+            self.session_setup=pickle.load(f)
+        self.login_session=self.session_setup['login_session']
+        self.login_session_keys=self.session_setup['login_session_keys']
+        self.database=self.session_setup['database']
+        self.logger.info(str(self.addr)+'[ load session & database]')
         
-#===================================================================================================================================#
-#===================================================================================================================================#
-
-    def Sessions_loader(self):
-        with open('Sessions','rb') as f:
-            self.sessions=pickle.load(f)
-        with open('Session_keys','rb') as f:
-            self.session_keys=pickle.load(f)
-        self.logger.info(str(self.addr)+'[ load Sessions ]')
-
-    def DB_loader(self):
-        with open('server_DB.DB','rb') as f:
-            self.database=pickle.load(f)
-        self.logger.info(str(self.addr)+'[ load DB ]')  
-
-    def setting_loader(self):
-        with open('setting.set','rb') as f:
-            self.setting=pickle.load(f)
-        self.set_addr=self.setting['addr']
-        self.set_port=self.setting['port']
-        self.logger.info(str(self.addr)+'[ load setting ]')
-
 #===================================================================================================================================#
 #===================================================================================================================================#
 
@@ -326,44 +310,37 @@ class Server:
 #===================================================================================================================================#
 
     def json_decompress(self):
-        self.recv_datas=base64.b85decode(self.recv_datas).decode()
-        self.logger.info(str(self.addr)+str(self.recv_datas))
+        self.recv_datas = base64.b85decode(self.recv_datas).decode()
+        self.logger.info(str(self.addr) + str(self.recv_datas))
         try:
             self.jsobj = json.loads(self.recv_datas)
-            self.client_version=self.jsobj["version"]
-            self.rtoken=self.jsobj['body']['random_token']
-            self.client_session_id=self.jsobj['body']['session_id']
-            self.platform=self.jsobj["platform"]
-            self.internal_ip=self.jsobj["addres"]
-            self.protocol=self.jsobj['body']["protocol"]
-            self.content_type=self.jsobj["content-type"]
-            self.Cypher_userid=self.jsobj['body']["userid"]
-            self.Cypher_userpw=self.jsobj['body']['userpw']
-            self.pre_master_key=self.jsobj['body']['pre_master_key']
-            self.master_secret=self.jsobj['body']['master_secret']
-            self.logger.info(str(self.addr)+' [ variable assignment done ] ')
         except json.decoder.JSONDecodeError as e:
-            self.jsobj = self.recv_datas[:len(self.recv_datas)-80]
-            self.hmac_hash=base64.b85decode((self.recv_datas[len(self.recv_datas)-80:].encode()))
-            self.jsobj = json.loads(self.recv_datas[:len(self.recv_datas)-80])
-            self.client_version=self.jsobj["version"]
-            self.rtoken=self.jsobj['body']['random_token']
-            self.client_session_id=self.jsobj['body']['session_id']
-            self.platform=self.jsobj["platform"]
-            self.internal_ip=self.jsobj["addres"]
-            self.protocol=self.jsobj['body']["protocol"]
-            self.content_type=self.jsobj["content-type"]
-            self.Cypher_userid=self.jsobj['body']["userid"]
-            self.Cypher_userpw=self.jsobj['body']['userpw']
-            self.pre_master_key=self.jsobj['body']['pre_master_key']
-            self.master_secret=self.jsobj['body']['master_secret']
-            self.logger.info(str(self.addr)+' [ hmac hash scanned ]')
-            self.logger.info(str(self.addr)+' [ variable assignment done ] ')
+            self.jsobj = json.loads(self.recv_datas[:len(self.recv_datas) - 80])
+            self.hmac_hash = base64.b85decode((self.recv_datas[len(self.recv_datas) - 80:].encode()))
+            self.logger.info(str(self.addr) + ' [ hmac hash scanned ]')
+
+        self._assign_variables()
+
+    def _assign_variables(self):
+        self.client_version = self.jsobj["version"]
+        self.rtoken = self.jsobj['body']['random_token']
+        self.client_session_id = self.jsobj['body']['session-id']
+        self.client_login_id = self.jsobj['body']['login-id']
+        self.platform = self.jsobj["platform"]
+        self.internal_ip = self.jsobj["addres"]
+        self.protocol = self.jsobj['body']["protocol"]
+        self.content_type = self.jsobj["content-type"]
+        self.Cypher_userid = self.jsobj['body']["userid"]
+        self.Cypher_userpw = self.jsobj['body']['userpw']
+        self.pre_master_key = self.jsobj['body']['pre_master_key']
+        self.master_secret = self.jsobj['body']['master_secret']
+        self.logger.info(str(self.addr) + ' [ variable assignment done ] ')
 
     def Create_json_object(self,content_type=None,platform=None,version=None,
                                         protocol=None,random_token=None,random_token_length=None,
                                         public_key=None,public_key_length=None,server_error=None,
-                                        session_id=None,session_id_length=None,master_secret=None):
+                                        session_id=None,session_id_length=None,master_secret=None,
+                                        login_id=None,login_id_length=None):
         self.jsobj={
             'content-type':content_type, 
             'platform':platform,
@@ -373,6 +350,8 @@ class Server:
                         'random_token_length':random_token_length,
                         'session-id':session_id,
                         'session-id_length':session_id_length,
+                        'login-id':login_id,
+                        'login-id_length':login_id_length,
                         'public-key':public_key,
                         'public-key_length':public_key_length,
                         'master_secret':master_secret,
@@ -389,8 +368,7 @@ class Server:
     def Decrypt_user_data(self):
         self.userid=self.decryption_aes(base64.b85decode(self.Cypher_userid))
         self.userpw=self.decryption_aes(base64.b85decode(self.Cypher_userpw))
-        self.temporary_data=[self.userid.decode(),self.userpw.decode()]
-        return self.temporary_data
+        return self.userid,self.userpw
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -433,18 +411,18 @@ class Server:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def Check_master_key(self):
-        self.pre_master_key=self.decryption_rsa(self.prv_key,base64.b85decode(self.pre_master_key))
-        for m in self.master_keys:
-            if m==self.pre_master_key:
+    def Check_Session_key(self):
+        for s,m in self.session_keys.items():
+            if s == self.client_session_id.encode():
                 self.master_key=m
                 return True
 
     def Check_Session_key(self):
-        for s,m in self.session_keys:
-            if s == self.client_session_id:
+        for s,m in self.session_keys.items():
+            if s == self.client_session_id.encode():
                 self.master_key=m
-                return self.master_key
+                return True
+
 
     def duplicate_inspection(self):
         if len(self.database) != 0:
@@ -473,20 +451,21 @@ class Server:
 
     def session_checker(self):
         self.dir=os.listdir(os.getcwd())
-        if ('Sessions' in self.dir and 'Session_keys' in self.dir):
+        if ('user_data.set' in self.dir):
             self.loader()
             return True
 
     def string_check(self):
-        self.UserID=self.temporary_data[0]
-        self.Userpwrd=self.temporary_data[1]
+        self.UserID=self.userid.decode()
+        self.Userpwrd=self.userpw.decode()
         if (" " not in self.UserID and "\r\n" not in self.UserID and "\n" not in self.UserID and "\t" not in self.UserID and re.search('[`~!@#$%^&*(),<.>/?]+', self.UserID) is None):
             if (len( self.Userpwrd) > 8 and re.search('[0-9]+', self.Userpwrd) is not None and re.search('[a-zA-Z]+', self.Userpwrd) is not None and re.search('[`~!@#$%^&*(),<.>/?]+', self.Userpwrd) is not None and " " not in self.Userpwrd):
+                print(self.Userpwrd)
                 self.verified_Userpw=self.L.pwd_hashing(self.Userpwrd)
+                print(self.Userpwrd)
                 self.logger.info(str(self.addr)+' [ PasswordHashing complete ]: '+str(PasswordHasher().verify(self.verified_Userpw,self.Userpwrd)))
                 self.verified_UserID=self.UserID
-                self.temporary_data=[self.verified_UserID,self.verified_Userpw]
-                return self.temporary_data
+                return self.verified_UserID,self.verified_Userpw
             else:
                 self.error_handler("Your password is too short or too easy. Password must be at least 8 characters and contain numbers, English characters and symbols. Also cannot contain whitespace characters.")
         else:
