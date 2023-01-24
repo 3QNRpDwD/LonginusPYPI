@@ -325,40 +325,32 @@ class Server:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def json_decompress(self):
-        self.recv_datas=base64.b85decode(self.recv_datas).decode()
-        self.logger.info(str(self.addr)+str(self.recv_datas))
-        try:
-            self.jsobj = json.loads(self.recv_datas)
-            self.client_version=self.jsobj["version"]
-            self.rtoken=self.jsobj['body']['random_token']
-            self.client_session_id=self.jsobj['body']['session_id']
-            self.platform=self.jsobj["platform"]
-            self.internal_ip=self.jsobj["addres"]
-            self.protocol=self.jsobj['body']["protocol"]
-            self.content_type=self.jsobj["content-type"]
-            self.Cypher_userid=self.jsobj['body']["userid"]
-            self.Cypher_userpw=self.jsobj['body']['userpw']
-            self.pre_master_key=self.jsobj['body']['pre_master_key']
-            self.master_secret=self.jsobj['body']['master_secret']
-            self.logger.info(str(self.addr)+' [ variable assignment done ] ')
-        except json.decoder.JSONDecodeError as e:
-            self.jsobj = self.recv_datas[:len(self.recv_datas)-80]
-            self.hmac_hash=base64.b85decode((self.recv_datas[len(self.recv_datas)-80:].encode()))
-            self.jsobj = json.loads(self.recv_datas[:len(self.recv_datas)-80])
-            self.client_version=self.jsobj["version"]
-            self.rtoken=self.jsobj['body']['random_token']
-            self.client_session_id=self.jsobj['body']['session_id']
-            self.platform=self.jsobj["platform"]
-            self.internal_ip=self.jsobj["addres"]
-            self.protocol=self.jsobj['body']["protocol"]
-            self.content_type=self.jsobj["content-type"]
-            self.Cypher_userid=self.jsobj['body']["userid"]
-            self.Cypher_userpw=self.jsobj['body']['userpw']
-            self.pre_master_key=self.jsobj['body']['pre_master_key']
-            self.master_secret=self.jsobj['body']['master_secret']
-            self.logger.info(str(self.addr)+' [ hmac hash scanned ]')
-            self.logger.info(str(self.addr)+' [ variable assignment done ] ')
+def json_decompress(self):
+    self.recv_datas = base64.b85decode(self.recv_datas).decode()
+    self.logger.info(str(self.addr) + str(self.recv_datas))
+    try:
+        self.jsobj = json.loads(self.recv_datas)
+    except json.decoder.JSONDecodeError as e:
+        self.jsobj = json.loads(self.recv_datas[:len(self.recv_datas) - 80])
+        self.hmac_hash = base64.b85decode((self.recv_datas[len(self.recv_datas) - 80:].encode()))
+        self.logger.info(str(self.addr) + ' [ hmac hash scanned ]')
+
+    self._assign_variables()
+
+def _assign_variables(self):
+    self.client_version = self.jsobj["version"]
+    self.rtoken = self.jsobj['body']['random_token']
+    self.client_session_id = self.jsobj['body']['session_id']
+    self.platform = self.jsobj["platform"]
+    self.internal_ip = self.jsobj["addres"]
+    self.protocol = self.jsobj['body']["protocol"]
+    self.content_type = self.jsobj["content-type"]
+    self.Cypher_userid = self.jsobj['body']["userid"]
+    self.Cypher_userpw = self.jsobj['body']['userpw']
+    self.pre_master_key = self.jsobj['body']['pre_master_key']
+    self.master_secret = self.jsobj['body']['master_secret']
+    self.logger.info(str(self.addr) + ' [ variable assignment done ] ')
+
 
     def Create_json_object(self,content_type=None,platform=None,version=None,
                                         protocol=None,random_token=None,random_token_length=None,
