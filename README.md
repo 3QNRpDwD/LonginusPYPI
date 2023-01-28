@@ -1,1 +1,1 @@
-This project is an https implementation package created to study web server (https) under Python modularization. ssl communication is implemented, and security-related updates under token storage are in progress.
+It is a library created to study sessions, tokens, etc. under the https communication protocol. It is incomplete and insecure.
