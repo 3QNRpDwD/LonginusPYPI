@@ -2,6 +2,7 @@ from LonginusPyPiAlpha import Longinus
 from Cryptodome.Cipher import AES #line:32
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import AES, PKCS1_OAEP
+from diffiehellman import DiffieHellman
 import subprocess,threading,sys,os
 from socket import *
 from getpass import *
@@ -29,8 +30,7 @@ class Client:
 #===================================================================================================================================#
 
     def client_start(self):
-        self.addr=input('Enter the server address to connect to : ');self.port=int(input('Enter the server port to connect to : '))
-        try:
+            self.addr=input('Enter the server address to connect to : ');self.port=int(input('Enter the server port to connect to : '))
             if self.cookie_checker()==True:
                 print('You are already logged in')
                 self.cookie_loader()
@@ -43,8 +43,6 @@ class Client:
                 while True:
                     self.receive_function()
                     self.protocol_execution()
-        except ConnectionRefusedError:
-            print('server not found')
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -72,10 +70,15 @@ class Client:
 #===================================================================================================================================#
 
     def protocol_execution(self):
+        print(self.content_type,self.protocol)
         if (self.content_type=='handshake' and self.protocol=='server_hello'):
             self.client_key_exchange()
         elif (self.content_type=='handshake' and self.protocol=='Change_Cipher_Spec'):
             self.session_id=self.atoken
+            print('master_key')
+            print(self.master_key)
+            print('session_id')
+            print(self.session_id)
             cmd=input('Please login or sign up :')
             if cmd=='login':
                 self.Join('login')
@@ -110,20 +113,19 @@ class Client:
                                             pre_master_key=self.Cypherdata)
         self.send(self.jsobj_dump.encode())
         self.master_key=self.pre_master_key
-        print(self.master_key)
         self.pre_master_key=None
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def user_info(self):
+    def Cypher_user_data(self):
         self.injecter()
         self.string_check()
         self.Cypher_userid=base64.b85encode(self.encryption_aes(self.verified_userid.encode())).decode()
         self.Cypher_userpw=base64.b85encode(self.encryption_aes(self.verified_userpw.encode())).decode()
 
     def Join(self,set_protocol):
-        self.user_info()
+        self.Cypher_user_data()
         self.Create_json_object(content_type='client_master_secret',platform='client',version=self.set_version,
                                 addres=gethostbyname(gethostname()),protocol=set_protocol,
                                 session_id=self.session_id,session_id_length=len(self.session_id),
@@ -180,16 +182,16 @@ class Client:
             'version':version,
             'addres':addres,
             'body':{'protocol':protocol,
-                        'random_token':random_token,
-                        'random_token_length':random_token_length,
-                        'session-id':session_id,
-                        'session_id_length':session_id_length,
-                        'login-id':login_id,
-                        'login-id_length':login_id_length,
-                        'userid':userid,
-                        'userpw':userpw,
-                        'pre_master_key':pre_master_key,
-                        'master_secret':master_secret
+                    'random_token':random_token,
+                    'random_token_length':random_token_length,
+                    'session-id':session_id,
+                    'session-id_length':session_id_length,
+                    'login-id':login_id,
+                    'login-id_length':login_id_length,
+                    'userid':userid,
+                    'userpw':userpw,
+                    'pre_master_key':pre_master_key,
+                    'master_secret':master_secret
                         }
          }
         self.jsobj_dump= json.dumps(self.jsobj,indent=2)
@@ -200,8 +202,8 @@ class Client:
         try:
             self.jsobj = json.loads(self.recv_datas)
         except json.decoder.JSONDecodeError as e:
-            self.jsobj = json.loads(self.recv_datas[:len(self.recv_datas) - 80])
-            self.hmac_hash = base64.b85decode((self.recv_datas[len(self.recv_datas) - 80:].encode()))
+            self.jsobj = json.loads(self.recv_datas.split('.')[0])
+            self.hmac_hash = base64.b85decode(self.recv_datas.split('.')[1])
 
         self._assign_variables()
 
@@ -216,13 +218,25 @@ class Client:
         self.rsa_keys=self.jsobj['body']["public-key"]
         self.server_error=self.jsobj['body']["server_error"]
         self.master_secret=self.jsobj['body']['master_secret']
-
+        return {
+                'content-type':self.content_type, 
+                'platform':self.platform,
+                'body':{'protocol':self.protocol,
+                            'random_token':self.token,
+                            'session-id':self.atoken,
+                            'login-id':self.login_id,
+                            'public-key':self.rsa_keys,
+                            'master_secret':self.master_secret,
+                            'server_error':self.server_error
+                            }
+            }
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     def recv_head(self):
         try:
             self.header=self.s.recv(4)
+            print(self.header)
             self.header=int(str(struct.unpack("I",self.header)).split(',')[0].split('(')[1])
             return self.header
         except Exception as e:
@@ -297,10 +311,10 @@ class Client:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def hmac_cipher(self,data):
-        self.hmac_data=hmac.digest(self.master_key,data,blake2b)
-        self.verified_data=data+base64.b85encode(self.hmac_data)
-        return self.verified_data
+    def hmac_cipher(self, data: bytes):
+        hmac_data = base64.b85encode(hmac.digest(self.master_key, data, blake2b))
+        verified_data = data +b'.'+hmac_data
+        return verified_data
 
     def encryption_rsa(self,set_pul_key:str,data:bytes):
         public_key = RSA.import_key(set_pul_key)
@@ -379,3 +393,4 @@ class Client:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
+Client().client_start()

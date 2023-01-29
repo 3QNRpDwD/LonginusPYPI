@@ -6,6 +6,7 @@ import subprocess,threading,sys,os,json
 from socket import *
 from getpass import *
 from datetime import datetime
+from datetime import timedelta
 from asyncio import *
 from hashlib import blake2b
 from argon2 import PasswordHasher
@@ -16,11 +17,11 @@ __all__=['Server']
 
 
 set_port:int=9997;set_addr:str='0.0.0.0';
-s=socket();
-ip:str=str();Token:bytes=bytes();Token_data:dict=dict();Token_DB:dict=dict()
-rdata:str='';platform:str='shell';head='';c='';addr='';Token_RSA:bytes=bytes();RSA_Key:dict=Longinus().Create_RSA_key()
-address=list();sessions:dict=dict();prv_key:str=open(RSA_Key['private_key']).read();pul_key:str=open(RSA_Key['public_key']).read();userdata:bytes=bytes()
-Server_DB:dict=dict();new_session:dict=dict()
+
+RSA_Key:dict=Longinus().Create_RSA_key()
+
+prv_key:str=open(RSA_Key['private_key']).read();pul_key:str=open(RSA_Key['public_key']).read()
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -30,24 +31,34 @@ logger.addHandler(stream_handler)
 file_handler = logging.FileHandler('server.log')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
-L= Longinus()
+
 
 class Server:
+    s=socket()
+    c=''
+    addr=''
+    ip=''
+    sessions = {}
+    session_keys = {}
+    login_sessions = {}
+    login_session_keys = {}
+    database = {}
+    json_obj=''
     def __init__(self,version='0.4.6',port=set_port,addres=set_addr):
         self.set_port=port;self.set_addr=addres;self.cipherdata=bytes();self.decrypt_data=bytes()
-        self.s=s;self.pul_key=pul_key;self.set_version=version
-        self.logger=logger
+        self.pul_key=pul_key;self.set_version=version
+        self.logger=logger;
 
     def run(self):
-        threading .Thread (target =self.run_service ).start ()
-
-    def run_service(self):
         self.bind_address()
         self.listen()
+        self.run_service()
+
+    def run_service(self):
         while True:
-            self.access_information=self.accept_connection()
-            self.N=self.Network(self.access_information)
-            threading .Thread (target =self.handler_connection ).start ()
+            self.N=self.Network()
+            self.accept_connection()
+            self.handler_connection()
 
     def bind_address(self):
         self.req = requests.get("http://ipconfig.kr")
@@ -59,31 +70,36 @@ class Server:
         self.s.listen(max_listen)
 
     def accept_connection(self):
-        self.c, self.addr = self.s.accept()
-        self.ip=str(self.addr).split("'")[1]
-        self.logger.info('[ Connected with ]: ' + str(self.addr))
-        return self.c, self.addr, self.ip
+        print('accept_connection')
+        Server.c, Server.addr = Server.s.accept()
+        Server.ip=str(Server.addr).split("'")[1]
+        self.logger.info('[ Connected with ]: ' + str(Server.addr))
+        return Server.c, Server.addr, Server.ip
 
     def handler_connection(self):
-        self.receive_function()
-        self.protocol_execution()
+        while True:
+            self.receive_function()
+            self.protocol_execution()
 
     def receive_function(self):
+        print('receive_function')
         self.N.recv_head()
-        self.N.recv()
-        self.N.json_decompress()
+        self.recv_data=self.N.recv()
+        self.obj=self.DATA(self.recv_data)
+        Server.json_obj=self.obj.json_decompress()
 
     def protocol_execution(self):
-        if (self.N.content_type == 'handshake' and self.N.protocol == 'client_hello'):
-            self.SSLConnection(self.access_information).server_hello()
-        elif (self.N.content_type == 'handshake' and self.N.protocol == 'client_key_exchange'):
-            self.SSLConnection(self.access_information).create_master_secret()
-            self.SSLConnection(self.access_information).change_cipher_spec_finished()
-        elif (self.N.content_type == 'client_master_secret' and self.N.protocol == 'Sign_Up'):
+        print('protocol_execution')
+        if (Server.json_obj['content-type'] == 'handshake' and Server.json_obj['body']['protocol'] == 'client_hello'):
+            self.SSLConnection('').server_hello()
+        elif (Server.json_obj['content-type'] == 'handshake' and Server.json_obj['body']['protocol'] == 'client_key_exchange'):
+            self.session_id,self.master_key=self.SSLConnection('').Create_master_secret()
+            self.SSLConnection('').ChangeCipherSpec_Finished(self.session_id)
+        elif (Server.json_obj['content-type'] == 'client_master_secret' and Server.json_obj['body']['protocol'] == 'Sign_Up'):
             self.HANDLERS().sign_up_handler()
-        elif (self.N.content_type == 'client_master_secret' and self.N.protocol == 'login'):
+        elif (Server.json_obj['content-type'] == 'client_master_secret' and Server.json_obj['body']['protocol'] == 'login'):
             self.HANDLERS().login_handler()
-        elif (self.content_type == 'client_master_secret' and self.N.protocol == 'request'):
+        elif (Server.json_obj['content-type'] == 'client_master_secret' and Server.json_obj['body']['protocol'] == 'request'):
             self.HANDLERS().request_handler()
         else:
             self.ERROR().error_handler('Abnormal access detected')
@@ -92,65 +108,61 @@ class Server:
 #===================================================================================================================================#
 
     class Network:
-        def __init__(self,access_information):
+        def __init__(self):
             self.head=''
-            self.c=access_information[0]
-            self.addr=access_information[1]
-            self.ip=access_information[2]
-            self.head = self.c.recv
             self.recv_datas=''
+            self.set_version=Server().set_version
             self.logger=logger
 
         def recv_head(self):
-            self.head = self.c.recv(4)
-            self.head = int(struct.unpack("I", self.head)[0])
-            self.logger.info(f'{self.addr} [Header received]: {self.head}')
-            return self.head
+            try:
+                self.head = Server.c.recv(4)
+                self.head = int(struct.unpack("I", self.head)[0])
+                self.logger.info(f'{Server.addr} [Header received]: {self.head}')
+            except:
+                Server().accept_connection()
+                return self.head
 
         def recv(self):
             self.recv_datas = bytes()
             if self.head < 2048:
-                self.recv_datas = self.c.recv(self.head)
+                self.recv_datas = Server.c.recv(self.head)
             else:
                 self.recv_datas = bytearray()
                 for i in range(int(self.head / 2048)):
-                    self.recv_datas += self.c.recv(2048)
-                    self.logger.info(f'{self.addr} [Receiving data]: {2048 * i / self.head * 100}%')
-                self.logger.info(f'{self.addr} [Receiving data]: 100%')
-            self.logger.info(f'{self.addr} [Data received]: {len(self.recv_datas)} bytes')
+                    self.recv_datas += Server.c.recv(2048)
+                    self.logger.info(f'{Server.addr} [Receiving data]: {2048 * i / self.head * 100}%')
+                self.logger.info(f'{Server.addr} [Receiving data]: 100%')
+            self.logger.info(f'{Server.addr} [Data received]: {len(self.recv_datas)} bytes')
+            print(self.recv_datas)
             return self.recv_datas
 
         def send(self, data: bytes):
             head = struct.pack("I", len(data))
-            self.c.sendall(head + data)
-            self.logger.info(f'{self.addr} [Data sent]: {len(data)} bytes')
+            Server.c.sendall(head + data)
+            self.logger.info(f'{Server.addr} [Data sent]: {len(data)} bytes')
+
+    class DATA:
+        def __init__(self,data=''):
+            self.data=data
+            self.jsobj=''
+            self.logger=logger
 
         def json_decompress(self):
-            self.recv_datas = base64.b85decode(self.recv_datas).decode()
-            self.logger.info(str(self.addr) + str(self.recv_datas))
-            try:
-                self.jsobj = json.loads(self.recv_datas)
-            except json.decoder.JSONDecodeError as e:
-                self.jsobj = json.loads(self.recv_datas[:len(self.recv_datas) - 80])
-                self.hmac_hash = base64.b85decode((self.recv_datas[len(self.recv_datas) - 80:].encode()))
-                self.logger.info(str(self.addr) + ' [ hmac hash scanned ]')
-
-            self._assign_variables()
-
-        def _assign_variables(self):
-            self.client_version = self.jsobj["version"]
-            self.rtoken = self.jsobj['body']['random_token']
-            self.client_session_id = self.jsobj['body']['session-id']
-            self.client_login_id = self.jsobj['body']['login-id']
-            self.platform = self.jsobj["platform"]
-            self.internal_ip = self.jsobj["addres"]
-            self.protocol = self.jsobj['body']["protocol"]
-            self.content_type = self.jsobj["content-type"]
-            self.Cypher_userid = self.jsobj['body']["userid"]
-            self.Cypher_userpw = self.jsobj['body']['userpw']
-            self.pre_master_key = self.jsobj['body']['pre_master_key']
-            self.master_secret = self.jsobj['body']['master_secret']
-            self.logger.info(str(self.addr) + ' [ variable assignment done ] ')
+            # try:
+                self.data = base64.b85decode(self.data).decode()
+                self.logger.info(str(Server.addr) + str(self.data))
+                try:
+                    self.jsobj = json.loads(self.data)
+                except json.decoder.JSONDecodeError as e:
+                    self.jsobj = json.loads(self.data.split('.')[0])
+                    self.hmac_hash = base64.b85decode(self.data.split('.')[1])
+                    print(self.jsobj,'\n')
+                    print(self.hmac_hash,'\n')
+                    self.logger.info(str(Server.addr) + ' [ hmac hash scanned ]')
+                return self.jsobj
+            # except Exception:
+            #     self.send('thank you! Server test was successful thanks to you, This message is a temporary message written to convey thanks to you, and it is a disclaimer that the server is operating normally.')
 
         def Create_json_object(self,content_type=None,platform=None,version=None,
                                             protocol=None,random_token=None,random_token_length=None,
@@ -175,7 +187,7 @@ class Server:
                             }
             }
             self.jsobj_dump= json.dumps(self.jsobj,indent=2)
-            self.logger.info(str(self.addr)+str(self.jsobj_dump))
+            self.logger.info(str(Server.addr)+str(self.jsobj_dump))
             return self.jsobj_dump
 
 
@@ -183,112 +195,113 @@ class Server:
 #===================================================================================================================================#
 
     class SSLConnection:
-        def __init__(self,access_information):
-            self.set_addr = Server().set_addr
-            self.set_port = Server().set_port
+        def __init__(self,set_version=''):
             self.master_key=''
-            self.c=access_information[0]
-            self.addr=access_information[1]
-            self.set_version=Server().set_version
-            self.SN=Server().Network(access_information)
+            self.set_version=set_version
+            self.SD=Server().DATA()
+            self.SN=Server().Network()
             self.logger=logger
 
         def server_hello(self):
             self.token=Longinus().Random_Token_generator()
-            self.SN.Create_json_object(content_type='handshake',platform='server',version=self.set_version,
+            self.SD.Create_json_object(content_type='handshake',platform='server',version=self.set_version,
                                                 protocol='server_hello',random_token=self.token.decode(),random_token_length=len(self.token),
                                                 public_key=Server().pul_key,public_key_length=len(Server().pul_key))
-            self.SN.send(self.SN.jsobj_dump.encode())
-            self.logger.info(str(self.addr)+' [ server hello transmission complete ] ')
+            self.SN.send(base64.b85encode(self.SD.jsobj_dump.encode()))
+            self.logger.info(str(Server.addr)+' [ server hello transmission complete ] ')
 
         def Create_master_secret(self):
-            self.master_key=Server().Crypto()._decrypt_rsa(self.prv_key,base64.b85decode(self.pre_master_key))
-            self.session_id=Server().SessionManager().session_creation()
-            self.logger.info(str(self.addr)+' [ Master secret creation complete ] ')
+            self.master_key=Server().Crypto()._decrypt_rsa(prv_key,base64.b85decode(Server.json_obj['body']['pre_master_key']))
+            self.session_id=Server().SessionManager().session_creation(self.master_key,Server.ip,Server.json_obj['addres'])
+            self.logger.info(str(Server.addr)+' [ Master secret creation complete ] ')
+            return self.session_id,self.master_key
 
-        def ChangeCipherSpec_Finished(self):
-            self.SN.Create_json_object(content_type='handshake',platform='server',version=self.set_version,
+        def ChangeCipherSpec_Finished(self,session_id):
+            self.SD.Create_json_object(content_type='handshake',platform='server',version=self.set_version,
                                                 protocol='Change_Cipher_Spec',
-                                                session_id=self.session_id.decode(),session_id_length=len(self.session_id))
-            self.logger.info(str(self.addr)+' [ Change Cipher Spec-Finished ] ')
-            self.SN.send(self.SN.jsobj_dump.encode())
-            self.c.close()
+                                                session_id=session_id,session_id_length=len(session_id))
+            self.logger.info(str(Server.addr)+' [ Change Cipher Spec-Finished ] ')
+            self.SN.send(base64.b85encode(self.SD.jsobj_dump.encode()))
+            Server.c.close()
+            print('Change Cipher Spec-Finished')
 
         def Master_key_setting(self):
-            if self.SN.client_session_id !=None:
-                self.master_key=Server().UserManagement().session_keys[self.SN.client_session_id.encode()]
-            elif self.SN.client_login_id !=None:
-                self.master_key=Server().UserManagement().login_session_keys[self.SN.client_session_id.encode()]
+            if Server.json_obj['body']['session-id'] !=None:
+                self.master_key=Server().UserManagement().session_keys[Server.json_obj['body']['session-id'].encode()]
+            elif Server.json_obj['body']['login-id'] !=None:
+                self.master_key=Server().UserManagement().login_session_keys[Server.json_obj['body']['login-id'].encode()]
             return self.master_key
+
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     class HANDLERS:
-        def __init__(self):
+        def __init__(self,set_version=''):
             self.master_key=Server().SSLConnection().Master_key_setting()
-            self.set_version = Server().set_version
-            self.userid,self.userpw=Server().Crypto().Decrypt_user_data(self.Network().Cypher_userid,self.Network().Cypher_userpw)
+            self.set_version = set_version
+            self.logger=logger
+            self.SN=Server().Network()
+            self.SD=Server().DATA()
+            self.userid,self.userpw=Server().Crypto().Decrypt_user_data(Server.json_obj['userid'],Server.json_obj['userpw'])
             self.User=Server().User(self.userid,self.userpw)
             self.verified_Userid,self.verified_Userpw,=self.User.verify_credentials()
-            self.ip=Server().ip
-            self.addr=Server().addr
-            self.SN=Server().Network()
-            self.logger=logger
 
         def Sign_Up_handler(self):
-            self.verified_Userpw=self.User.pwd_hashing(self.verified_Userpw)
-            if Server().SessionManager().sessions[self.SN.client_session_id.encode()]['User addres']==self.ip:
+            self.verified_Userpw=self.Server().User(self.verified_Userid,self.verified_Userpw).pwd_hashing()
+            if Server().SessionManager().sessions[Server.json_obj['body']['session-id'].encode()]['User addres']==Server.ip:
                 Server().DBManagement().new_database_definition(self.verified_Userid,self.verified_Userpw)
-                self.logger.info(str(self.addr)+' [ User info update ]: '+self.verified_Userid)
-                self.SN.Create_json_object(content_type='Sign_Up-report',platform='server',version=self.set_version,
+                self.logger.info(str(Server.addr)+' [ User info update ]: '+self.verified_Userid)
+                self.SD.Create_json_object(content_type='Sign_Up-report',platform='server',version=self.set_version,
                                             protocol='Sign_up_complete')
-                self.verified_jsobj_dump=Server().Crypto().hmac_cipher(self.SN.jsobj_dump.encode())
+                self.verified_jsobj_dump=Server().Crypto().hmac_cipher(self.SD.jsobj_dump.encode())
                 self.SN.send(self.verified_jsobj_dump)
-                Server().c.close()
+                Server.c.close()
 
         def login_handler(self):                 
-            for DB in self.database:
-                if DB['user_id']==self.verified_Userid:
+            for DB_id,DB_val in Server().database.items():
+                if DB_val['user_id']==self.verified_Userid:
                     #try:
-                    print(DB['user_pw'])
+                    print(DB_val['user_pw'])
                     print(self.verified_Userpw)
-                    if self.ph.verify(DB['user_pw'],self.verified_Userpw):
-                        self.login_id=Server().SessionManager().login_session_creation(DB)
-                        Server().SessionManager().discard_session(self.SN.client_session_id.encode())
+                    if self.ph.verify(DB_val['user_pw'],self.verified_Userpw):
+                        self.login_id=Server().SessionManager().login_session_creation(DB_id)
+                        Server().SessionManager().discard_session(Server.json_obj['body']['session-id'].encode())
                         Server().SessionManager().saver()
-                        self.SN.Create_json_object(content_type='login-report',platform='server',version=self.set_version,
+                        self.SD.Create_json_object(content_type='login-report',platform='server',version=self.set_version,
                                                     protocol='welcome! ',
                                                     login_id=self.login_id,login_id_length=len(self.login_id))
-                        self.verified_jsobj_dump=Server().Crypto().hmac_cipher(self.SN.jsobj_dump.encode())
+                        self.verified_jsobj_dump=Server().Crypto().hmac_cipher(self.SD.jsobj_dump.encode())
                         self.SN.send(self.verified_jsobj_dump)
-                        Server().c.close()
+                        Server.c.close()
                     #except VerifyMismatchError: Server().ERROR().error_handler('The password does not match the supplied hash')
                 else: Server().ERROR().error_handler('The user could not be found. Please proceed to sign up')
 
         def request_handler(self):
             self.master_key=Server().SSLConnection().Master_key_setting()
             self.reqdata=self.decryption_aes(base64.b85decode(self.master_secret))
-            self.logger.info(str(self.addr)+' [ get request ]: '+self.reqdata.decode())
-            print(self.login_session.keys())
-            if self.SN.client_login_id.encode() in self.login_session.keys():
-                self.SN.Create_json_object(content_type='server_master_secret',platform='server',version=self.set_version,login_id=self.client_login_id,
+            self.logger.info(str(Server.addr)+' [ get request ]: '+self.reqdata.decode())
+            print(self.login_sessions.keys())
+            if Server.json_obj['body']['session-id'].encode() in login_sessions.keys():
+                self.SD.Create_json_object(content_type='server_master_secret',platform='server',version=self.set_version,login_id=Server.client_login_id,
                                             protocol='response',master_secret=base64.b85encode(self.encryption_aes(self.reqdata)).decode())
-                self.verified_jsobj_dump=self.hmac_cipher(self.SN.jsobj_dump.encode())
+                self.verified_jsobj_dump=self.hmac_cipher(self.SD.jsobj_dump.encode())
                 self.SN.send(self.verified_jsobj_dump)
-                Server().c.close()
+                Server.c.close()
             else:
                 Server().ERROR().error_handler('Invalid login ID')
 
     class ERROR:
-        def error_handler(self,msg="None"):
+
+        def error_handler(self,msg,set_version=''):
             self.logger=logger
             self.SN=Server().Network()
-            self.logger.info(str(Server().addr)+' [ unexpected error ]: '+msg)
-            self.SN.Create_json_object(content_type='return_error',platform='server',version=Server().set_version,
+            self.SD=Server().DATA()
+            self.logger.info(str(Server.addr)+' [ unexpected error ]: '+msg)
+            self.SD.Create_json_object(content_type='return_error',platform='server',version=set_version,
                                                 protocol='error',
                                                 server_error=' [ unexpected error ]: '+msg)
-            self.SN.send(self.SN.jsobj_dump.encode())
-            Server().c.close()
+            self.SN.send(self.SD.jsobj_dump.encode())
+            Server.c.close()
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -296,7 +309,6 @@ class Server:
     class DBManagement:
         def __init__(self):
             self.logger=logger
-            self.database = []
 
         def new_database_definition(self,verified_UserID,verified_Userpw, group='__user__', permission_lv=1):
             self.verified_Userpw=verified_Userpw
@@ -308,61 +320,60 @@ class Server:
             self.database_creation()
 
         def database_creation(self):
+            token=Longinus().Random_Token_generator()
             new_database = {'user_id': self.verified_UserID, 'user_pw': self.verified_Userpw, 'permission_lv': self.permission_lv, 'group': self.group}
-            self.database.append(new_database)
+            Server.database.update(token,new_database)
             self.logger.info(f'[ New user database created ]: {new_database}')
             return new_database
 
     class SessionManager:
         def __init__(self):
-            self.sessions = {}
-            self.session_keys = {}
-            self.login_sessions = {}
-            self.login_session_keys = {}
-            self.TokenDB={}
             self.logger=logger
 
-        def session_creation(self, ip, internal_ip):
+        def session_creation(self, master_key, ip, internal_ip):
             session_id, session_db = self.session_generator(ip, internal_ip)
-            self.sessions[session_id] = session_db
-            self.session_keys[session_id] = self.master_key
+            Server.sessions[session_id]=session_db
+            Server.session_keys[session_id]=master_key
             self.logger.info(f'{ip} Session assignment complete: {session_id}')
             return session_id
 
-        def login_session_creation(self, data,ip, internal_ip):
+        def login_session_creation(self, data, ip, internal_ip ):
             login_id, login_db = self.session_generator(ip, internal_ip)
-            login_session = {login_id: {**data, **login_db}}
-            self.login_sessions.update(login_session)
-            self.login_session_keys[login_id] = self.session_keys[self.session_id]
+            new_login_session = {login_id: {**data, **login_db}}
+            Server.login_sessions.update(new_login_session)
+            Server.login_session_keys(login_id,Server.session_keys[Server.json_obj['body']['session-id']])
             self.logger.info(f'{ip} login Session assignment complete: {login_id}')
             return login_id
 
         def session_generator(self, ip, internal_ip):
-            token = base64.b85encode(secrets.token_bytes(16)).decode()
-            now = datetime.now().timestamp()
-            now_after = now + datetime.timedelta(days=35)
-            token_data = {'ip': ip, 'internal_ip': internal_ip, 'timestamp': now, 'validity': now_after}
-            self.TokenDB[token] = token_data
+            token = base64.b85encode(secrets.token_bytes(32)).decode()
+            now = datetime.now()
+            now_after = now + timedelta(days=30)
+            print(now)
+            print(now_after)
+            token_data = {'ip': ip, 'internal_ip': internal_ip, 'timestamp': str(now), 'validity': str(now_after)}
+            print(token_data)
             return token, token_data
 
         def discard_session(self, session_id):
             self.logger.info('Session discarded: {session_id}')
-            if self.sessions:
-                del self.sessions[session_id]
-                del self.session_keys[session_id]
+            if Server.sessions:
+                del Server.sessions[session_id]
+                del Server.session_keys[session_id]
 
         def validate_session(self):
             pass
 
         def saver(self):
-            self.save_session_and_database(self.login_sessions,self.login_session_keys,self.database)
+            self.save_session_and_database()
 
         def loader(self):
-            self.login_sessions, self.login_session_keys, self.database = self.load_session_and_database()
+            global login_sessions,login_session_keys,database 
+            login_sessions,login_session_keys,database = self.load_session_and_database()
 
-        def save_session_and_database(self, sessions, session_keys, database):
+        def save_session_and_database(self):
             with open('user_data.set', 'wb') as f:
-                pickle.dump({'login_sessions': sessions, 'login_session_keys': session_keys, 'database': database}, f)
+                pickle.dump({'login_sessions': login_sessions, 'login_session_keys': login_session_keys, 'database': database}, f)
             self.logger.info('[ save session & database]')
 
         def load_session_and_database(self):
@@ -374,19 +385,19 @@ class Server:
 #===================================================================================================================================#
 
     class Crypto:
-        def __init__(self, master_key):
+        def __init__(self):
             self.master_key=Server().SSLConnection().Master_key_setting()
             self.ph = PasswordHasher()
             self.logger=logger
 
         def Decrypt_user_data(self,Cypher_userid,Cypher_userpw):
-            self.userid=self._decrypt_aes(base64.b85decode(self.Cypher_userid))
-            self.userpw=self.v(base64.b85decode(self.Cypher_userpw))
+            self.userid=self._decrypt_aes(base64.b85decode(Server.cypher_userid))
+            self.userpw=self.v(base64.b85decode(Server.cypher_userpw))
             return self.userid,self.userpw
 
         def hmac_cipher(self, data: bytes):
             hmac_data = base64.b85encode(hmac.digest(self.master_key, data, blake2b))
-            verified_data = data + hmac_data
+            verified_data = data +b'.'+hmac_data
             return verified_data
 
         def _encrypt_aes(self, data: bytes):
@@ -419,7 +430,6 @@ class Server:
             self.ph = PasswordHasher()
             self.verified_UserID=''
             self.verified_Userpw=''
-            self.addr=Server().addr
             self.logger=logger
 
         def verify_credentials(self):
@@ -451,22 +461,22 @@ class Server:
             return False
 
         def _name_duplicate_check(self):
-            if len(self.database) != 0:
-                for DB in self.database:
-                    return DB['user_id']==self.verified_UserID
+            if len(Server().database) != 0:
+                for DB_id,DB_val in Server().database.items():
+                    return DB_val['user_id']==self.verified_UserID
             else:
                 return False
 
         def _session_credentials(self):
             self.master_key=Server().SSLConnection().Master_key_setting()
             if (self.hmac_hash==hmac.digest(self.master_key,self.jsobj.encode(),blake2b)):
-                logger.info(str(self.addr)+' [ Session Credentials Completed ]: '+str(self.session_id))
+                logger.info(str(Server.addr)+' [ Session Credentials Completed ]: '+str(self.session_id))
                 return True
             else:
                 return False
 
         def _permission_checker(self):
-            if (self.self.Network().ip=='127.0.0.1' and self.verified_UserID=='administrator' or self.verified_UserID=='admin'):
+            if (Server.ip=='127.0.0.1' and self.verified_UserID=='administrator' or self.verified_UserID=='admin'):
                 return True
             else:
                 return False
@@ -479,10 +489,10 @@ class Server:
             else:
                 return False
 
-        def pwd_hashing(self,pwd):
+        def pwd_hashing(self):
             while True:
-                temp=self.ph.hash(pwd)
-                if (self.ph.verify(temp,pwd) and self.ph.check_needs_rehash(temp)!=True):
+                temp=self.ph.hash(self.verified_Userpw)
+                if (self.ph.verify(temp,self.verified_Userpw) and self.ph.check_needs_rehash(temp)!=True):
                     break
             return temp
 #===================================================================================================================================#
