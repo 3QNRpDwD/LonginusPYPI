@@ -55,7 +55,7 @@ class Client:
                                             )
         self.s=socket()
         self.s.connect((self.addr,self.port))
-        self.send(self.jsobj_dump.encode())
+        self.send(base64.b85encode(self.jsobj_dump.encode()))
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -79,10 +79,10 @@ class Client:
             print(self.master_key)
             print('session_id')
             print(self.session_id)
-            cmd=input('Please login or sign up :')
-            if cmd=='login':
+            cmd=input('Please login or sign up (l/s) :')
+            if cmd=='l':
                 self.Join('login')
-            elif cmd=='sign up':
+            elif cmd=='s':
                 self.Join('Sign_Up')
             else:
                 sys.exit()
@@ -111,7 +111,7 @@ class Client:
         self.Create_json_object(content_type='handshake',platform='client',version=self.set_version,
                                             addres=gethostbyname(gethostname()),protocol='client_key_exchange',
                                             pre_master_key=self.Cypherdata)
-        self.send(self.jsobj_dump.encode())
+        self.send(base64.b85encode(self.jsobj_dump.encode()))
         self.master_key=self.pre_master_key
         self.pre_master_key=None
 
@@ -259,14 +259,10 @@ class Client:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def merge_data(self,data:bytes):
-        self.body=base64.b85encode(data)
-        self.head=struct.pack("I",len(self.body))
-        self.send_data=self.head+self.body
-        return self.send_data
-    
-    def send(self,data:str):
-        self.s.send(self.merge_data(data))
+    def send(self, data: bytes):
+        head = struct.pack("I", len(data))
+        self.s.sendall(head + data)
+        return head + data
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -277,7 +273,6 @@ class Client:
 
     def send_client(self,data):
         self.s.sendall(self.merge_data(data))
-            
 
     def string_check(self):
         self.temp_data=bytearray()
@@ -313,7 +308,7 @@ class Client:
 
     def hmac_cipher(self, data: bytes):
         hmac_data = base64.b85encode(hmac.digest(self.master_key, data, blake2b))
-        verified_data = data +b'.'+hmac_data
+        verified_data = base64.b85encode(data) +b'.'+hmac_data
         return verified_data
 
     def encryption_rsa(self,set_pul_key:str,data:bytes):
