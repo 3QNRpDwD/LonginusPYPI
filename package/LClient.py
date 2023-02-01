@@ -8,7 +8,7 @@ from socket import *
 from getpass import *
 from datetime import datetime
 from asyncio import *
-from hashlib import blake2b
+from hashlib import sha256
 from argon2 import PasswordHasher
 import msvcrt,re,base64,hmac,pickle
 import json
@@ -25,37 +25,33 @@ class Client:
         self.cipherdata=bytes();self.s=socket();self.token:bytes;self.atoken:bytes=bytes;self.rtoken:bytes
         self.Cypher_userid=bytes();self.Cypher_userpw=bytes();self.header=bytes();self.session_id=bytes()
         self.cookie=dict();self.temp_userid=bytes();self.temp_userpw=bytes();self.login_id='';self.set_version=set_version
+        self.cookie_login_id='';self.cookie_master_key=''
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     def client_start(self):
             self.addr=input('Enter the server address to connect to : ');self.port=int(input('Enter the server port to connect to : '))
-            if self.cookie_checker()==True:
-                print('You are already logged in')
-                self.cookie_loader()
-                self.request()
-                while True:
-                    self.receive_function()
-                    self.protocol_execution()
-            else:
-                self.client_hello()
-                while True:
-                    self.receive_function()
-                    self.protocol_execution()
+            self.client_hello()
+            while True:
+                self.receive_function()
+                self.protocol_execution()
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     def client_hello(self):
-        self.rtoken=self.L.Random_Token_generator()
-        self.Create_json_object(content_type='handshake',platform='client',version=self.set_version,
-                                            addres=gethostbyname(gethostname()),protocol='client_hello',
-                                            random_token=self.rtoken.decode(),random_token_length=len(self.rtoken),
-                                            )
-        self.s=socket()
-        self.s.connect((self.addr,self.port))
-        self.send(base64.b85encode(self.jsobj_dump.encode()))
+        # try:
+            self.rtoken=self.L.Random_Token_generator()
+            self.Create_json_object(content_type='handshake',platform='client',version=self.set_version,
+                                                addres=gethostbyname(gethostname()),protocol='client_hello',
+                                                random_token=self.rtoken.decode(),random_token_length=len(self.rtoken),
+                                                )
+            self.s=socket()
+            self.s.connect((self.addr,self.port))
+            self.send(base64.b85encode(self.jsobj_dump.encode()))
+        # except ConnectionRefusedError as e:
+        #     print(e)
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -70,22 +66,22 @@ class Client:
 #===================================================================================================================================#
 
     def protocol_execution(self):
-        print(self.content_type,self.protocol)
         if (self.content_type=='handshake' and self.protocol=='server_hello'):
             self.client_key_exchange()
         elif (self.content_type=='handshake' and self.protocol=='Change_Cipher_Spec'):
-            self.session_id=self.atoken
-            print('master_key')
-            print(self.master_key)
-            print('session_id')
-            print(self.session_id)
-            cmd=input('Please login or sign up (l/s) :')
-            if cmd=='l':
-                self.Join('login')
-            elif cmd=='s':
-                self.Join('Sign_Up')
+            if self.cookie_checker()==True:
+                print('You are already logged in')
+                self.cookie_loader()
+                self.request()
             else:
-                sys.exit()
+                self.session_id=self.atoken
+                cmd=input('\nPlease login or sign up (l/s) :')
+                if cmd=='l':
+                    self.Join('login')
+                elif cmd=='s':
+                    self.Join('Sign_Up')
+                else:
+                    sys.exit()
         elif (self.content_type=='Sign_Up-report' and self.protocol=='Sign_up_complete'):
             print('\nSign up is complete')
             print('Please login\n')
@@ -95,7 +91,8 @@ class Client:
             self.cookie_generator()
             self.request()
         elif (self.content_type=='server_master_secret' and self.protocol=='response'):
-            self.master_secret=self.decryption_aes(base64.b85decode(self.master_secret))
+            self.master_secret=self.decryption_aes(base64.b85decode(self.master_secret),self.cookie_master_key)
+            print('Server :',self.master_secret.decode())
             self.request()
         elif (self.content_type=='return_error' and self.protocol=='error'):
             self.error_detector()
@@ -121,8 +118,8 @@ class Client:
     def Cypher_user_data(self):
         self.injecter()
         self.string_check()
-        self.Cypher_userid=base64.b85encode(self.encryption_aes(self.verified_userid.encode())).decode()
-        self.Cypher_userpw=base64.b85encode(self.encryption_aes(self.verified_userpw.encode())).decode()
+        self.Cypher_userid=base64.b85encode(self.encryption_aes(self.verified_userid.encode(),self.master_key)).decode()
+        self.Cypher_userpw=base64.b85encode(self.encryption_aes(self.verified_userpw.encode(),self.master_key)).decode()
 
     def Join(self,set_protocol):
         self.Cypher_user_data()
@@ -131,7 +128,7 @@ class Client:
                                 session_id=self.session_id,session_id_length=len(self.session_id),
                                 userid=self.Cypher_userid,userpw=self.Cypher_userpw)
 
-        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode(),self.master_key)
         self.s=socket()
         self.s.connect((self.addr,self.port))
         self.send(self.verified_jsobj_dump)
@@ -140,7 +137,7 @@ class Client:
 #===================================================================================================================================#
 
     def cookie_generator(self):
-        self.cookie={'login_id':self.login_id}
+        self.cookie={'login_id':self.login_id,'master_key':self.master_key}
         print(self.cookie)
         with open('cookie','wb') as f:
             pickle.dump(self.cookie,f)
@@ -150,11 +147,11 @@ class Client:
 
     def request(self):
         self.req=input('send : ')
-        self.Cypher_data=base64.b85encode(self.encryption_aes(self.req.encode())).decode()
-        self.Create_json_object(content_type='client_master_secret',platform='client',version=self.self.set_version,
-                                        addres=gethostbyname(gethostname()),protocol='request',login_id=self.login_id,
+        self.Cypher_data=base64.b85encode(self.encryption_aes(self.req.encode(),self.cookie_master_key)).decode()
+        self.Create_json_object(content_type='client_master_secret',platform='client',version=self.set_version,
+                                        addres=gethostbyname(gethostname()),protocol='request',login_id=self.cookie_login_id,
                                         master_secret=self.Cypher_data)
-        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode())
+        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode(),self.cookie_master_key)
         self.s=socket()
         self.s.connect((self.addr,self.port))
         self.send(self.verified_jsobj_dump)
@@ -165,7 +162,8 @@ class Client:
     def cookie_loader(self):
         with open('cookie','rb') as f:
             self.cookie=pickle.load(f)
-        self.login_id=self.cookie['login_id']
+        self.cookie_login_id=self.cookie['login_id']
+        self.cookie_master_key=self.cookie['master_key']
         print(self.cookie)
 
 #===================================================================================================================================#
@@ -198,13 +196,17 @@ class Client:
         return self.jsobj_dump
 
     def json_decompress(self):
-        self.recv_datas = base64.b85decode(self.recv_datas).decode()
-        try:
-            self.jsobj = json.loads(self.recv_datas)
-        except json.decoder.JSONDecodeError as e:
-            self.jsobj = json.loads(self.recv_datas.split('.')[0])
-            self.hmac_hash = base64.b85decode(self.recv_datas.split('.')[1])
-
+        if b'.' not in self.recv_datas:
+            self.jsobj = base64.b85decode(self.recv_datas).decode()
+            self.jsobj = json.loads(self.jsobj)
+        else:
+            self.recv_obj=self.recv_datas.decode().split('.')
+            self.jsobj = base64.b85decode(self.recv_obj[0].encode()).decode()
+            self.hmac_hash = base64.b85decode(self.recv_obj[1].encode())
+            if self.hmac_hash==hmac.digest(self.master_key,self.jsobj.encode(),sha256):
+                self.jsobj = json.loads(self.jsobj.decode())
+            elif self.hmac_hash==hmac.digest(self.cookie_master_key,self.jsobj.encode(),sha256):
+                self.jsobj = json.loads(self.jsobj)
         self._assign_variables()
 
     def _assign_variables(self):
@@ -236,7 +238,6 @@ class Client:
     def recv_head(self):
         try:
             self.header=self.s.recv(4)
-            print(self.header)
             self.header=int(str(struct.unpack("I",self.header)).split(',')[0].split('(')[1])
             return self.header
         except Exception as e:
@@ -306,8 +307,8 @@ class Client:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def hmac_cipher(self, data: bytes):
-        hmac_data = base64.b85encode(hmac.digest(self.master_key, data, blake2b))
+    def hmac_cipher(self, data: bytes,master_key):
+        hmac_data = base64.b85encode(hmac.digest(master_key, data, sha256))
         verified_data = base64.b85encode(data) +b'.'+hmac_data
         return verified_data
 
@@ -317,10 +318,10 @@ class Client:
         self.encrypt_data = cipher_rsa.encrypt(base64.b85encode(data))
         return self.encrypt_data
 
-    def encryption_aes(self,data:bytes):
+    def encryption_aes(self,data:bytes,master_key):
          self.data=base64.b85encode(data)
          self.encrypt_data=bytes()
-         cipher_aes = AES.new(self.master_key, AES.MODE_EAX)
+         cipher_aes = AES.new(master_key, AES.MODE_EAX)
          ciphertext, tag = cipher_aes.encrypt_and_digest(self.data)
          self.encrypt_data= cipher_aes.nonce+ tag+ ciphertext
          return self.encrypt_data
@@ -328,11 +329,11 @@ class Client:
 #===================================================================================================================================#
 #===================================================================================================================================#
 
-    def decryption_aes(self,set_data):
+    def decryption_aes(self,set_data,master_key):
         nonce=set_data[:16]
         tag=set_data[16:32]
         ciphertext =set_data[32:-1]+set_data[len(set_data)-1:]
-        session_key = self.master_key
+        session_key = master_key
         cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
         data = cipher_aes.decrypt_and_verify(ciphertext, tag)
         self.decrypt_data=base64.b85decode(data)
