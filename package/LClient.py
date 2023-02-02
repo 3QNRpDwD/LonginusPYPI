@@ -19,7 +19,7 @@ __all__=['Client']
 class Client:
     L=Longinus()
     ClientDB:dict=dict()
-    def __init__(self,set_addr:str='127.0.0.1',set_port:int=9997,set_version='0.4.6'):
+    def __init__(self,set_addr:str='longinuspypialpha.kro.kr',set_port:int=9997,set_version='0.4.6'):
         self.addr=set_addr;self.port=set_port;self.recv_datas=bytes();self.string_check_data=list;self.Cypherdata:bytes
         self.userid=str();self.pwrd=bytes();self.udata=bytes();self.head=bytes();self.rsa_keys:bytes=bytes()
         self.cipherdata=bytes();self.s=socket();self.token:bytes;self.atoken:bytes=bytes;self.rtoken:bytes
@@ -31,7 +31,6 @@ class Client:
 #===================================================================================================================================#
 
     def client_start(self):
-            self.addr=input('Enter the server address to connect to : ');self.port=int(input('Enter the server port to connect to : '))
             self.client_hello()
             while True:
                 self.receive_function()
@@ -66,6 +65,10 @@ class Client:
 #===================================================================================================================================#
 
     def protocol_execution(self):
+        if not self.cookie_master_key=='':
+            self.master_key=self.cookie_master_key
+        if not self.cookie_login_id=='':
+            self.login_id=self.cookie_login_id
         if (self.content_type=='handshake' and self.protocol=='server_hello'):
             self.client_key_exchange()
         elif (self.content_type=='handshake' and self.protocol=='Change_Cipher_Spec'):
@@ -91,7 +94,7 @@ class Client:
             self.cookie_generator()
             self.request()
         elif (self.content_type=='server_master_secret' and self.protocol=='response'):
-            self.master_secret=self.decryption_aes(base64.b85decode(self.master_secret),self.cookie_master_key)
+            self.master_secret=self.decryption_aes(base64.b85decode(self.master_secret),self.master_key)
             print('Server :',self.master_secret.decode())
             self.request()
         elif (self.content_type=='return_error' and self.protocol=='error'):
@@ -147,14 +150,16 @@ class Client:
 
     def request(self):
         self.req=input('send : ')
-        self.Cypher_data=base64.b85encode(self.encryption_aes(self.req.encode(),self.cookie_master_key)).decode()
-        self.Create_json_object(content_type='client_master_secret',platform='client',version=self.set_version,
-                                        addres=gethostbyname(gethostname()),protocol='request',login_id=self.cookie_login_id,
-                                        master_secret=self.Cypher_data)
-        self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode(),self.cookie_master_key)
-        self.s=socket()
-        self.s.connect((self.addr,self.port))
-        self.send(self.verified_jsobj_dump)
+        if not (self.req == ' ' or self.req == '\n' or self.req == '    '):
+            self.Cypher_data=base64.b85encode(self.encryption_aes(self.req.encode(),self.master_key)).decode()
+            self.Create_json_object(content_type='client_master_secret',platform='client',version=self.set_version,
+                                            addres=gethostbyname(gethostname()),protocol='request',login_id=self.login_id,
+                                            master_secret=self.Cypher_data)
+            self.verified_jsobj_dump=self.hmac_cipher(self.jsobj_dump.encode(),self.master_key)
+            self.s=socket()
+            self.s.connect((self.addr,self.port))
+            self.send(self.verified_jsobj_dump)
+        else: print('Space characters cannot be transmitted')
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -175,22 +180,26 @@ class Client:
                                         pre_master_key:str=None,session_id:str=None,session_id_length:str=None,
                                         master_secret:str=None,login_id=None,login_id_length=None):
         self.jsobj={
-            'content-type':content_type, 
-            'platform':platform,
-            'version':version,
-            'addres':addres,
-            'body':{'protocol':protocol,
+            'request-head':{
+                    'content-type':content_type, 
+                    'platform':platform,
+                    'version':version,
+                    'addres':addres,
+                    'protocol':protocol,
                     'random_token':random_token,
                     'random_token_length':random_token_length,
                     'session-id':session_id,
                     'session-id_length':session_id_length,
                     'login-id':login_id,
-                    'login-id_length':login_id_length,
+                    'login-id_length':login_id_length
+                    },
+
+            'request-body':{
                     'userid':userid,
                     'userpw':userpw,
                     'pre_master_key':pre_master_key,
                     'master_secret':master_secret
-                        }
+                    }
          }
         self.jsobj_dump= json.dumps(self.jsobj,indent=2)
         return self.jsobj_dump
@@ -200,37 +209,45 @@ class Client:
             self.jsobj = base64.b85decode(self.recv_datas).decode()
             self.jsobj = json.loads(self.jsobj)
         else:
-            self.recv_obj=self.recv_datas.decode().split('.')
-            self.jsobj = base64.b85decode(self.recv_obj[0].encode()).decode()
-            self.hmac_hash = base64.b85decode(self.recv_obj[1].encode())
-            if self.hmac_hash==hmac.digest(self.master_key,self.jsobj.encode(),sha256):
-                self.jsobj = json.loads(self.jsobj.decode())
-            elif self.hmac_hash==hmac.digest(self.cookie_master_key,self.jsobj.encode(),sha256):
-                self.jsobj = json.loads(self.jsobj)
+            try:
+                self.recv_obj=self.recv_datas.decode().split('.')
+                self.jsobj = base64.b85decode(self.recv_obj[0].encode()).decode()
+                self.hmac_hash = base64.b85decode(self.recv_obj[1].encode())
+                if self.hmac_hash==hmac.digest(self.master_key,self.jsobj.encode(),sha256):
+                    self.jsobj = json.loads(self.jsobj)
+                elif self.hmac_hash==hmac.digest(self.cookie_master_key,self.jsobj.encode(),sha256):
+                    self.jsobj = json.loads(self.jsobj)
+            except Exception as e:
+                print(e)
         self._assign_variables()
 
     def _assign_variables(self):
-        self.server_version=self.jsobj["version"]
-        self.token=self.jsobj['body']['random_token']
-        self.atoken=self.jsobj['body']['session-id']
-        self.login_id = self.jsobj['body']['login-id']
-        self.platform=self.jsobj["platform"]
-        self.protocol=self.jsobj['body']["protocol"]
-        self.content_type=self.jsobj["content-type"]
-        self.rsa_keys=self.jsobj['body']["public-key"]
-        self.server_error=self.jsobj['body']["server_error"]
-        self.master_secret=self.jsobj['body']['master_secret']
+        self.server_version=self.jsobj['response-head']["version"]
+        self.token=self.jsobj['response-head']['random_token']
+        self.atoken=self.jsobj['response-head']['session-id']
+        self.login_id = self.jsobj['response-head']['login-id']
+        self.platform=self.jsobj['response-head']["platform"]
+        self.protocol=self.jsobj['response-head']["protocol"]
+        self.content_type=self.jsobj['response-head']["content-type"]
+        self.rsa_keys=self.jsobj['response-body']["public-key"]
+        self.server_error=self.jsobj['response-body']["server_error"]
+        self.master_secret=self.jsobj['response-body']['master_secret']
         return {
-                'content-type':self.content_type, 
-                'platform':self.platform,
-                'body':{'protocol':self.protocol,
-                            'random_token':self.token,
-                            'session-id':self.atoken,
-                            'login-id':self.login_id,
-                            'public-key':self.rsa_keys,
-                            'master_secret':self.master_secret,
-                            'server_error':self.server_error
-                            }
+                'response-head':{
+                    'content-type':self.content_type, 
+                    'platform':self.platform,
+                    'version':self.server_version,
+                    'protocol':self.protocol,
+                    'random_token':self.token,
+                    'session-id':self.atoken,
+                    'login-id':self.login_id,
+                    },
+
+                'response-body':{
+                        'public-key':self.rsa_keys,
+                        'master_secret':self.master_secret,
+                        'server_error':self.server_error
+                        }
             }
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -333,8 +350,7 @@ class Client:
         nonce=set_data[:16]
         tag=set_data[16:32]
         ciphertext =set_data[32:-1]+set_data[len(set_data)-1:]
-        session_key = master_key
-        cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
+        cipher_aes = AES.new(master_key, AES.MODE_EAX, nonce)
         data = cipher_aes.decrypt_and_verify(ciphertext, tag)
         self.decrypt_data=base64.b85decode(data)
         return self.decrypt_data

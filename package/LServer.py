@@ -38,6 +38,7 @@ class Server:
     database = {}
     json_obj=''
     N=''
+    col_ip=''
     sokt=socket()
     RSA_Key:dict=Longinus().Create_RSA_key()
     prv_key:str=open(RSA_Key['private_key']).read()
@@ -47,47 +48,57 @@ class Server:
         self.set_version=version
         self.logger=logger;
         self.Lock=threading.Lock()
-        if self.FileManagement()._check_session_and_database():
-            self.FileManagement().loader()
 
     def run(self):
+        print(self.FileManagement().loader())
         Server.N=self.Network()
         self.N.bind_address(self.set_addr, self.set_port)
         Server.N.listen(0)
         self.run_service()
 
     def run_service(self):
-        while True:
-            self.N=Server.N
-            self.external_ip=Server.N.accept_connection()
-            threading.Thread(target=self.handler_connection).start()
+        self.N=Server.N
+        Server.N.accept_connection()
+        threading.Thread(target=self.handler_connection).start()
 
     def handler_connection(self):
         while True:
-            self.receive_function()
-            self.protocol_execution()
+            # try:
+                self.receive_function()
+                self.protocol_execution()
+            # except Exception as e:
+            #     self.ERROR().error_handler(str(e))
 
     def receive_function(self):
-        self.buffer_size=self.N.recv_head()
-        self.recv_data=self.N.recv(self.buffer_size)
-        self.obj=self.DATA(self.recv_data)
-        self.json_obj,self.hmac_hash=self.obj.json_decompress()
+        # try:
+            self.buffer_size=self.N.recv_head()
+            self.recv_data=self.N.recv(self.buffer_size)
+            self.obj=self.DATA(self.recv_data)
+            self.json_obj,self.hmac_hash=self.obj.json_decompress()
+        # except Exception as e:
+        #     self.ERROR().error_handler(str(e))
 
     def protocol_execution(self):
-        self.SSL=self.SSLConnection('0.5.0',self.json_obj,self.external_ip)
-        self.handle=self.HANDLERS('0.5.0',self.json_obj,self.external_ip)
-        if (self.json_obj['content-type'] == 'handshake' and self.json_obj['body']['protocol'] == 'client_hello'):
-            self.SSL.server_hello()
-        elif (self.json_obj['content-type'] == 'handshake' and self.json_obj['body']['protocol'] == 'client_key_exchange'):
-            self.session_id,self.master_key=self.SSL.Create_master_secret()
-            self.SSL.ChangeCipherSpec_Finished(self.session_id)
-        elif (self.json_obj['content-type'] == 'client_master_secret' and self.json_obj['body']['protocol'] == 'Sign_Up'):
-            self.handle.Sign_Up_handler()
-        elif (self.json_obj['content-type'] == 'client_master_secret' and self.json_obj['body']['protocol'] == 'login'):
-            self.handle.login_handler()
-        elif (self.json_obj['content-type'] == 'client_master_secret' and self.json_obj['body']['protocol'] == 'request'):
-            self.handle.request_handler()
-        else: self.ERROR().error_handler('Abnormal access detected')
+        # try:
+            self.SSL=self.SSLConnection('0.5.0',self.json_obj)
+            self.handle=self.HANDLERS('0.5.0',self.json_obj)
+            self.content_type=self.json_obj['request-head']['content-type']
+            self.protocol=self.json_obj['request-head']['protocol']
+            if (self.content_type == 'handshake' and self.protocol == 'client_hello'):
+                self.SSL.server_hello()
+            elif (self.content_type == 'handshake' and self.protocol == 'client_key_exchange'):
+                self.session_id,self.master_key=self.SSL.Create_master_secret()
+                self.SSL.ChangeCipherSpec_Finished(self.session_id)
+            elif (self.content_type == 'client_master_secret' and self.protocol == 'Sign_Up'):
+                self.handle.Sign_Up_handler()
+            elif (self.content_type == 'client_master_secret' and self.protocol == 'login'):
+                self.handle.login_handler()
+            elif (self.content_type == 'client_master_secret' and self.protocol == 'request'):
+                self.handle.request_handler()
+            else: self.ERROR().error_handler('Abnormal access detected')
+        # except Exception as e:
+        #    self.ERROR().error_handler(str(e))
+        
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -95,6 +106,7 @@ class Server:
     class Network:
         c=''
         addr=''
+        col_addr=''
         def __init__(self):
             self.head=bytes()
             self.recv_datas=bytes()
@@ -105,7 +117,7 @@ class Server:
         def bind_address(self,set_addr, set_port):
             self.req = requests.get("http://ipconfig.kr")
             self.req = str(re.search(r'IP Address : (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', self.req.text)[1])
-            self.logger.info('[ Server started on '+'\033[32m'+'complete'+'\033[0m'+' : ' + self.req + ' ] ')
+            self.logger.info('[ Server started on '+'\033[32m'+'complete'+'\033[0m'+' ] => ' + self.req+':'+str(set_port))
             self.s.bind((set_addr, set_port))
 
         def listen(self,Volume):
@@ -113,11 +125,13 @@ class Server:
 
         def accept_connection(self):
             Server.Network.c, Server.Network.addr = self.s.accept()
-            self.ip=str(self.addr).split("'")[1]
-            self.logger.info('[ '+'\033[32m'+'Connected'+'\033[0m'+' with ]: ' + str(self.addr))
-            return self.ip
+            Server.Network.col_addr='\033[33m'+f'{self.addr}'+'\033[0m'
+            Server.ip=str(self.addr).split("'")[1]
+            Server.col_ip='('+'\033[38;5;214m'+Server.ip+'\033[0m'+')'
+            self.logger.info('[ '+'\033[32m'+'Connected'+'\033[0m'+' with ] : '+Server.Network.col_addr)
 
         def recv_head(self):
+
             try:
                 self.head = self.c.recv(4)
                 self.head = int(struct.unpack("I", self.head)[0])
@@ -125,7 +139,7 @@ class Server:
                 self.accept_connection()
                 self.head = self.c.recv(4)
                 self.head = int(struct.unpack("I", self.head)[0])
-            self.logger.info(f'{self.addr} [Header '+'\033[32m'+'received'+'\033[0m'+' ]: '+str(self.head))
+            self.logger.info(f'[ Header '+'\033[32m'+'received'+'\033[0m'+' ]'+Server.Network.col_addr+': '+str(self.head))
             return self.head
 
         def recv(self,buffer_size:int):
@@ -136,23 +150,23 @@ class Server:
             else:
                 self.recv_datas = bytearray()
                 for i in range(int(self.head / 2048)):
-                    self.logger.info(f'{self.addr} ['+'\033[32m'+ 'Receiving data'+'%' +'\033[0m'+']:' +'\033[32m'+ str(2048 * i / self.head * 100)+'%' +'\033[0m')
+                    self.logger.info(f' ['+'\033[32m'+ 'Receiving data'+'%' +'\033[0m'+']'+Server.Network.col_addr+':' +'\033[32m'+ str(2048 * i / self.head * 100)+'%' +'\033[0m')
                     self.recv_datas += self.c.recv(2048)
-                self.logger.info(f'{self.addr} [Receiving data]: '+'\033[32m'+'100%'+'\033[0m')
-            self.logger.info(f'{self.addr} [Data '+'\033[32m'+'received'+'\033[0m'+' ]: '+str(len(self.recv_datas))+' bytes')
+                self.logger.info(f' [ Receiving data]: '+'\033[32m'+'100%'+'\033[0m')
+            self.logger.info(f'[ Data '+'\033[32m'+'received'+'\033[0m'+' ]'+Server.Network.col_addr+': '+str(len(self.recv_datas))+' bytes')
             return self.recv_datas
 
         def send(self, data: bytes):
             head = struct.pack("I", len(data))
             self.c.sendall(head + data)
-            self.logger.info(f'{self.addr} [Data '+'\033[32m'+'sent'+'\033[0m'+' ]: '+str(len(data))+' bytes')
+            self.logger.info(f'[ Data '+'\033[32m'+'sent'+'\033[0m'+' ]'+Server.Network.col_addr+': '+str(len(data))+' bytes')
 
         def send_and_close(self, data: bytes):
             head = struct.pack("I", len(data))
             self.c.sendall(head + data)
-            self.logger.info(f'{self.addr} [Data '+'\033[32m'+'sent'+'\033[0m'+' ]: '+str(len(data))+' bytes')
+            self.logger.info(f'[ Data '+'\033[32m'+'sent'+'\033[0m'+' ]'+Server.Network.col_addr+': '+str(len(data))+' bytes')
             self.c.close()
-            self.logger.info(f'{self.addr} [socket '+'\033[31m'+'Closed'+'\033[0m'+' ]')
+            self.logger.info(f'[ socket '+'\033[31m'+'Closed'+'\033[0m'+' ]'+Server.Network.col_addr+'')
 
 
     class DATA:
@@ -163,7 +177,7 @@ class Server:
             self.logger=logger
 
         def json_decompress(self):
-            try:
+            # try:
                 self.compression_data = self.data
                 if b'.' not in self.compression_data:
                     self.jsobj = base64.b85decode(self.compression_data).decode()
@@ -173,20 +187,23 @@ class Server:
                     self.recv_obj=self.compression_data.decode().split('.')
                     self.jsobj = base64.b85decode(self.recv_obj[0].encode())
                     self.hmac_hash = base64.b85decode(self.recv_obj[1].encode())
-                    self.logger.info('[ hmac hash found '+'\033[32m'+'successful'+'\033[0m'+' ]: '+str(self.hmac_hash))
+                    self.logger.info('[ hmac hash found '+'\033[32m'+'successful'+'\033[0m'+' ]'+Server.col_ip+': '+str(self.hmac_hash))
                     self.jsobj = json.loads(self.jsobj)
                     if not self.request_credentials(self.hmac_hash,self.jsobj):
                         Server().ERROR().error_handler('Tampering, forged false request')
                         return 'Tampering, forged false request'
                 return self.jsobj,self.hmac_hash
-            except Exception:
-                print(self.compression_data)
-                Server().Network().send(b'thank you! Server test was successful thanks to you, This message is a temporary message written to convey thanks to you, and it is a disclaimer that the server is operating normally.')
+            # except Exception:
+            #     print(self.compression_data)
+            #     Server().Network().send(b'thank you! Server test was successful thanks to you, This message is a temporary message written to convey thanks to you, and it is a disclaimer that the server is operating normally.')
 
         def master_key_selector(self,json_obj):
-            self.session_id=json_obj['body']['session-id']
-            if json_obj['body']['login-id'] !=None:
-                self.master_key=Server.login_session_keys[json_obj['body']['login-id']]
+            self.session_id=json_obj['request-head']['session-id']
+            self.login_id=json_obj['request-head']['login-id']
+            print(self.login_id)
+            print(self.session_id)
+            if self.login_id !=None:
+                self.master_key=Server.login_session_keys[json_obj['request-head']['login-id']]
                 return self.master_key
             elif self.session_id !=None:
                 self.master_key=Server.session_keys[self.session_id]
@@ -197,7 +214,7 @@ class Server:
         def request_credentials(self,hmac_hash,json_obj):
             self.master_key=self.master_key_selector(json_obj)
             if (hmac_hash==hmac.digest(self.master_key,json.dumps(self.jsobj,indent=2).encode(),sha256)):
-                logger.info(f'[ Session Credentials '+'\033[32m'+'complete'+'\033[0m'+' ]: '+str(hmac_hash))
+                logger.info(f'[ Session Credentials '+'\033[32m'+'complete'+'\033[0m'+' ]'+Server.col_ip+': '+str(hmac_hash))
                 return True
             else:
                 return False
@@ -208,38 +225,41 @@ class Server:
                                             session_id=None,session_id_length=None,master_secret=None,
                                             login_id=None,login_id_length=None):
             self.jsobj={
-                'content-type':content_type, 
-                'platform':platform,
-                'version':version,
-                'body':{'protocol':protocol,
-                            'random_token':random_token,
-                            'random_token_length':random_token_length,
-                            'session-id':session_id,
-                            'session-id_length':session_id_length,
-                            'login-id':login_id,
-                            'login-id_length':login_id_length,
-                            'public-key':public_key,
-                            'public-key_length':public_key_length,
-                            'master_secret':master_secret,
-                            'server_error':server_error
-                            }
+                'response-head':{
+                    'content-type':content_type, 
+                    'platform':platform,
+                    'version':version,
+                    'protocol':protocol,
+                    'random_token':random_token,
+                    'random_token_length':random_token_length,
+                    'session-id':session_id,
+                    'session-id_length':session_id_length,
+                    'login-id':login_id,
+                    'login-id_length':login_id_length,
+                    },
+
+                'response-body':{
+                        'public-key':public_key,
+                        'public-key_length':public_key_length,
+                        'master_secret':master_secret,
+                        'server_error':server_error
+                        }
             }
             self.jsobj_dump= json.dumps(self.jsobj,indent=2)
-            self.logger.info(f' Create_json_object : \n {str(self.jsobj_dump)}')
+            self.logger.info('[ Create json object '+'\033[32m'+'complete'+'\033[0m'+ ' ]'+Server.col_ip+f': \n {str(self.jsobj_dump)}')
             return self.jsobj_dump
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     class SSLConnection:
-        def __init__(self,set_version,json_obj,external_ip):
+        def __init__(self,set_version,json_obj):
             self.set_version=set_version
             self.SD=Server().DATA()
             Server.N=Server().Network()
             self.SC=Server().Crypto('')
             self.logger=logger
             self.json_obj=json_obj
-            self.external_ip=external_ip
 
         def server_hello(self):
             self.token=Longinus().Random_Token_generator()
@@ -247,37 +267,37 @@ class Server:
                                                 protocol='server_hello',random_token=self.token.decode(),random_token_length=len(self.token),
                                                 public_key=Server.pul_key,public_key_length=len(Server.pul_key))
             Server.N.send(base64.b85encode(self.jsobj_dump.encode()))
-            self.logger.info(f'[ | {self.external_ip} | server hello transmission '+'\033[32m'+'complete'+'\033[0m'+'] ')
+            self.logger.info(f'[ server hello transmission '+'\033[32m'+'complete'+'\033[0m'+']'+Server.col_ip)
 
         def Create_master_secret(self):
-            self.master_key=self.SC._decrypt_rsa(Server.prv_key,base64.b85decode(self.json_obj['body']['pre_master_key']))
-            self.session_id=Server().SessionManager(self.external_ip,self.json_obj).session_creation(self.master_key)
-            self.logger.info(f'[ | {self.external_ip} | Master secret creation '+'\033[32m'+'complete'+'\033[0m'+' ]: ' +str(self.session_id))
+            self.master_key=self.SC._decrypt_rsa(Server.prv_key,base64.b85decode(self.json_obj['request-body']['pre_master_key']))
+            self.session_id=Server().SessionManager(self.json_obj).session_creation(self.master_key)
+            self.logger.info(f'[ Master secret creation '+'\033[32m'+'complete'+'\033[0m'+' ]'+Server.col_ip+': ' +str(self.session_id))
             return self.session_id,self.master_key
 
         def ChangeCipherSpec_Finished(self,session_id=None):
             self.jsobj_dump=self.SD.Create_json_object(content_type='handshake',platform='server',version=self.set_version,
                                                 protocol='Change_Cipher_Spec',
                                                 session_id=session_id,session_id_length=len(session_id))
-            self.logger.info(f'[ | {self.external_ip} | Change Cipher Spec-'+'\033[32m'+'Finished'+'\033[0m'+' ] ')
+            self.logger.info(f'[ Change Cipher Spec-'+'\033[32m'+'Finished'+'\033[0m'+' ]'+Server.col_ip+' ')
             Server.N.send_and_close(base64.b85encode(self.jsobj_dump.encode()))
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
     class HANDLERS:
-        def __init__(self,set_version,json_obj,external_ip):
+        def __init__(self,set_version,json_obj):
             self.json_obj=json_obj
-            self.session_id=json_obj['body']['session-id']
+            self.session_id=json_obj['request-head']['session-id']
             self.master_key=Server().DATA().master_key_selector(json_obj)
+            Server().FileManagement().loader()
             if (self.master_key!=None):
-                self.UserID,self.Userpw=self.json_obj['body']['userid'],self.json_obj['body']['userpw']
+                self.UserID,self.Userpw=self.json_obj['request-body']['userid'],self.json_obj['request-body']['userpw']
                 if not (self.Userpw==None or self.UserID==None):
                     self.UserID,self.Userpw=Server().Crypto(self.master_key).Decrypt_user_data(self.UserID,self.Userpw)
                     self.SU=Server().User(self.UserID.decode(),self.Userpw.decode())
                     self.verified_Userid,self.verified_Userpw=self.SU.verify_credentials()
             self.set_version = set_version
-            self.external_ip=external_ip
             self.logger=logger
             Server.N=Server().Network()
             self.SD=Server().DATA()
@@ -287,11 +307,12 @@ class Server:
                 Server().ERROR().error_handler("This user already exists.")
                 return "This user already exists."
             self.verified_Userpw=self.SU.pwd_hashing(self.verified_Userpw)
-            if (Server.sessions[self.session_id]['external_ip']==self.external_ip):
-                if Server().User(self.verified_Userid,self.verified_Userpw)._permission_checker(self.external_ip):
-                    Server().DBManagement(group='__administrator__').new_database_definition(self.verified_Userid,self.verified_Userpw,self.external_ip)
-                Server().DBManagement(group='__user__').new_database_definition(self.verified_Userid,self.verified_Userpw,self.external_ip)
-                self.logger.info(f'[ | {self.external_ip} |  User info update '+'\033[32m'+'complete'+'\033[0m'+' ]: '+self.verified_Userid)
+            if (Server.sessions[self.session_id]['external_ip']==Server.ip):
+                if Server().User(self.verified_Userid,self.verified_Userpw)._permission_checker(Server.ip):
+                    Server().DBManagement(group='__administrator__').new_database_definition(self.verified_Userid,self.verified_Userpw,Server.ip)
+                Server().DBManagement(group='__user__').new_database_definition(self.verified_Userid,self.verified_Userpw,Server.ip)
+                Server().FileManagement().save_database()
+                self.logger.info(f'[ User info update '+'\033[32m'+'complete'+'\033[0m'+' ]'+Server.col_ip+': '+self.verified_Userid)
                 self.jsobj_dump=self.SD.Create_json_object(content_type='Sign_Up-report',platform='server',version=self.set_version,
                                             protocol='Sign_up_complete')
                 self.verified_jsobj_dump=Server().Crypto(self.master_key).hmac_cipher(self.jsobj_dump.encode())
@@ -302,22 +323,22 @@ class Server:
                 if DB_val['user_id']==self.verified_Userid:
                     #try:
                         if PasswordHasher().verify(DB_val['user_pw'],self.verified_Userpw):
-                            self.SM=Server().SessionManager(self.external_ip,self.json_obj)
+                            self.SM=Server().SessionManager(self.json_obj)
                             self.login_id=self.SM.login_session_creation(DB_id)
                             self.SM.discard_session(self.session_id)
-                            Server().FileManagement().saver()
+                            Server().FileManagement().save_session()
                             self.jsobj_dump=self.SD.Create_json_object(content_type='login-report',platform='server',version=self.set_version,
                                                         protocol='welcome! ',
                                                         login_id=self.login_id,login_id_length=len(self.login_id))
                             self.verified_jsobj_dump=Server().Crypto(self.master_key).hmac_cipher(self.jsobj_dump.encode())
+                            self.logger.info(f'[ Login '+'\033[32m'+'successful'+'\033[0m'+' ]'+Server.col_ip+': '+str(self.login_id))
                             Server.N.send_and_close(self.verified_jsobj_dump)
-                            self.logger.info(f'[ | {self.external_ip} | Login '+'\033[32m'+'successful'+'\033[0m'+' ]: '+str(self.login_id))
                     #except Exception: Server().ERROR().error_handler('The password does not match the supplied hash')
                 else: Server().ERROR().error_handler('The user could not be found. Please proceed to sign up')
 
         def request_handler(self):
-            self.reqdata=Server().Crypto(self.master_key)._decrypt_aes(base64.b85decode(self.json_obj['body']['master_secret']))
-            self.logger.info(f'[ | {self.external_ip} | \033[32m'+'get request'+'\033[0m'+' ]:' f' {self.reqdata.decode()}')
+            self.reqdata=Server().Crypto(self.master_key)._decrypt_aes(base64.b85decode(self.json_obj['request-body']['master_secret']))
+            self.logger.info('[ \033[32m'+'get request'+'\033[0m'+' ]'+Server.col_ip+':' f' {self.reqdata.decode()}')
             self.jsobj_dump=self.SD.Create_json_object(content_type='server_master_secret',platform='server',version=self.set_version,
                                         protocol='response',master_secret=base64.b85encode(Server().Crypto(self.master_key)._encrypt_aes(self.reqdata)).decode())
             self.verified_jsobj_dump=Server().Crypto(self.master_key).hmac_cipher(self.jsobj_dump.encode())
@@ -325,14 +346,17 @@ class Server:
 
     class ERROR:
         def error_handler(self,msg,set_version=''):
-            self.logger=logger
-            Server.N=Server().Network()
-            self.SD=Server().DATA()
-            self.logger.info('[ '+'\033[31m'+'unexpected error'+'\033[0m'+ ' ]: ' +msg)
-            self.jsobj_dump=self.SD.Create_json_object(content_type='return_error',platform='server',version=set_version,
-                                                protocol='error',
-                                                server_error=' [ unexpected error ]: '+msg)
-            Server.N.send_and_close(self.jsobj_dump.encode())
+            try:
+                self.logger=logger
+                Server.N=Server().Network()
+                self.SD=Server().DATA()
+                self.logger.info('[ '+'\033[31m'+'unexpected error'+'\033[0m'+ ' ]: ' +msg)
+                self.jsobj_dump=self.SD.Create_json_object(content_type='return_error',platform='server',version=set_version,
+                                                    protocol='error',
+                                                    server_error=' [ unexpected error ]: '+msg)
+                Server.N.send_and_close(self.jsobj_dump.encode())
+            except Exception as e:
+                print('[ unexpected error ]:' ,e)
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -356,18 +380,17 @@ class Server:
             return new_database
 
     class SessionManager:
-        def __init__(self,external_ip,json_obj):
+        def __init__(self,json_obj):
             self.logger=logger
             self.json_obj=json_obj
-            self.session_id=json_obj['body']['session-id']
-            self.internal_ip=json_obj['addres']
-            self.external_ip=external_ip
+            self.session_id=json_obj['request-head']['session-id']
+            self.internal_ip=json_obj['request-head']['addres']
 
         def session_creation(self, master_key):
             session_id, session_info = self.session_generator()
             Server.sessions[session_id]=session_info
             Server.session_keys[session_id]=master_key
-            self.logger.info(f'[ | {self.external_ip} | Session assignment '+'\033[32m'+'complete'+'\033[0m'+' ]: '+str(session_id))
+            self.logger.info(f'[ Session assignment '+'\033[32m'+'complete'+'\033[0m'+' ]'+Server.col_ip+': '+str(session_id))
             return session_id
 
         def login_session_creation(self, data):
@@ -375,18 +398,18 @@ class Server:
             new_login_session = {login_id: {'data':data, 'session_info':session_info}}
             Server.login_sessions.update(new_login_session)
             Server.login_session_keys[login_id]=Server.session_keys[self.session_id]
-            self.logger.info(f'[ | {self.external_ip} | login Session assignment '+'\033[32m'+'complete'+'\033[0m'+' ]: '+str(login_id))
+            self.logger.info(f'[ login Session assignment '+'\033[32m'+'complete'+'\033[0m'+' ]'+Server.col_ip+': '+str(login_id))
             return login_id
 
         def session_generator(self,length=32,session_validity=7):
             token = base64.b85encode(secrets.token_bytes(length)).decode()
             now = datetime.now()
             now_after = now + timedelta(days=session_validity)
-            token_data = {'external_ip': self.external_ip, 'internal_ip': self.internal_ip, 'timestamp': str(now), 'validity': str(now_after)}
+            token_data = {'external_ip': Server.ip, 'internal_ip': self.internal_ip, 'timestamp': str(now), 'validity': str(now_after)}
             return token, token_data
 
         def discard_session(self, session_id):
-            self.logger.info(f'[ Session '+'\033[31m'+'discarded'+'\033[0m'+']: '+str(session_id))
+            self.logger.info(f'[ Session '+'\033[31m'+'discarded'+'\033[0m'+'] '+Server.col_ip+': '+str(session_id))
             if Server.sessions:
                 del Server.sessions[session_id]
                 del Server.session_keys[session_id]
@@ -395,26 +418,61 @@ class Server:
             pass
 
     class FileManagement:
-        def saver(self):
-            self.save_session_and_database()
 
         def loader(self):
-            Server.login_sessions,Server.login_session_keys,Server.database = self.load_session_and_database()
+            if (Server.login_sessions=={} and Server.login_session_keys=={} and Server.database =={}):
+                if (self._check_database() and self._check_session()):
+                    self.load_session_and_database()
+                    return 'load_session_and_database'
+            elif (Server.login_sessions=={} and Server.login_session_keys=={}):
+                if self._check_session():
+                    Server.login_sessions,Server.login_session_keys=self.load_sessione()
+                    return 'load_sessione'
+            elif Server.database=={}:
+                if self._check_database():
+                    Server.database=self.load_database()
+                    return 'load_database'
 
-        def save_session_and_database(self):
-            with open('session_and_database', 'wb') as f:
-                pickle.dump({'login_sessions':Server.login_sessions, 'login_session_keys': Server.login_session_keys, 'database': Server.database}, f)
-            logger.info('[ Database and session data saved '+'\033[32m'+'completed'+'\033[0m'+' ]')
 
         def load_session_and_database(self):
-            with open('session_and_database', 'rb') as f:
-                session_setup = pickle.load(f)
-            return session_setup['login_sessions'], session_setup['login_session_keys'], session_setup['database']
+            self.load_session()
+            self.load_database()
 
-        def _check_session_and_database(self):
+        def load_session_and_database(self):
+            Server.login_sessions,Server.login_session_keys=self.load_sessione()
+            Server.database = self.load_database()
+
+        def save_session(self):
+            with open('Server.sessions', 'wb') as f:
+                pickle.dump({'login_sessions':Server.login_sessions, 'login_session_keys': Server.login_session_keys}, f)
+            logger.info('[ Session data saved '+'\033[32m'+'completed'+'\033[0m'+' ]')
+
+        def load_sessione(self):
+            with open('Server.sessions', 'rb') as f:
+                session_setup = pickle.load(f)
+            logger.info('[ sessione data load '+'\033[32m'+'completed'+'\033[0m'+' ]')
+            return session_setup['login_sessions'], session_setup['login_session_keys']
+
+        def save_database(self):
+            with open('Server.DB', 'wb') as f:
+                pickle.dump(Server.database, f)
+            logger.info('[ Database data saved '+'\033[32m'+'completed'+'\033[0m'+' ]')
+
+        def load_database(self):
+            with open('Server.DB', 'rb') as f:
+                database_setup = pickle.load(f)
+            logger.info('[ Database data load '+'\033[32m'+'completed'+'\033[0m'+' ]')
+            return database_setup
+
+        def _check_database(self):
             self.dir=os.listdir(os.getcwd())
-            if ('session_and_database' in self.dir):
-                self.loader()
+            if ('Server.DB' in self.dir):
+                return True
+            else: return False
+
+        def _check_session(self):
+            self.dir=os.listdir(os.getcwd())
+            if ('Server.sessions' in self.dir):
                 return True
             else: return False
 
