@@ -1,0 +1,27 @@
+1. Client가 HTTPs를 이용한 URL로 통신 시도
+Client -------------HTTPs Request-------------> Server
+
+2. Server 가 자신의 인증서를 Client에 전달
+Client <---------------인증서------------------- Server
+
+3. Client 에서 Server 인증서의 신뢰 여부 검사
+- 인증기관의 신뢰도 조사 (인증서 Chain 검사)
+- 인증서의 DNS Name 및 IP Address의 부합 여부 조사
+- Time Valid 조사
+- Reboked 여부 조사
+
+4. Client에서 신뢰 시 인증서 다운로드 진행
+
+5. Client에서 인증서에 입력된 Server 의 Public key 추출
+
+6. Client에서 Pre-master key를 만들고, 서버의 Piblic Key 를 이용하여 암호와
+(중요 서버의 Public Key를 이용해 암호화 된 Pre-master Key는 Server 만이 자신의 Private Key를 통해 복호화 할 수 있음)
+
+7. Client 에서 암호화 된 Pre-master Key 를 Server 로 전달
+Client --------encrypted Pre-master key--------> Server
+
+8. Server 는 암호화된 Pre-master Key를 자신의 Private Key로 복호화 하고 이를 이용하여 Session Key 생성
+(RAS negotiation을 통해 Server와 Client가 pre-master key를 통해 session 키를 생성)
+
+9. 위의 과정을 통해 생성된 Session Key를 이용하여 Server와 Client 간에 발생하는 모든 통신을 암호화
+(해당 Session Key는 통신 종료 시 제거 됨)

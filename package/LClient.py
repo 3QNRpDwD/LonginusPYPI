@@ -2,7 +2,6 @@ from LonginusPyPiAlpha import Longinus
 from Cryptodome.Cipher import AES #line:32
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import AES, PKCS1_OAEP
-from diffiehellman import DiffieHellman
 import subprocess,threading,sys,os
 from socket import *
 from getpass import *
@@ -31,10 +30,14 @@ class Client:
 #===================================================================================================================================#
 
     def client_start(self):
+        if self.cookie_checker()==True:
+            self.cookie_loader()
+            self.request()
+        else:
             self.client_hello()
-            while True:
-                self.receive_function()
-                self.protocol_execution()
+        while True:
+            self.receive_function()
+            self.protocol_execution()
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -72,19 +75,14 @@ class Client:
         if (self.content_type=='handshake' and self.protocol=='server_hello'):
             self.client_key_exchange()
         elif (self.content_type=='handshake' and self.protocol=='Change_Cipher_Spec'):
-            if self.cookie_checker()==True:
-                print('You are already logged in')
-                self.cookie_loader()
-                self.request()
+            self.session_id=self.atoken
+            cmd=input('\nPlease login or sign up (l/s) :')
+            if cmd=='l':
+                self.Join('login')
+            elif cmd=='s':
+                self.Join('Sign_Up')
             else:
-                self.session_id=self.atoken
-                cmd=input('\nPlease login or sign up (l/s) :')
-                if cmd=='l':
-                    self.Join('login')
-                elif cmd=='s':
-                    self.Join('Sign_Up')
-                else:
-                    sys.exit()
+                sys.exit()
         elif (self.content_type=='Sign_Up-report' and self.protocol=='Sign_up_complete'):
             print('\nSign up is complete')
             print('Please login\n')
@@ -123,6 +121,8 @@ class Client:
         self.string_check()
         self.Cypher_userid=base64.b85encode(self.encryption_aes(self.verified_userid.encode(),self.master_key)).decode()
         self.Cypher_userpw=base64.b85encode(self.encryption_aes(self.verified_userpw.encode(),self.master_key)).decode()
+
+
 
     def Join(self,set_protocol):
         self.Cypher_user_data()
@@ -404,5 +404,3 @@ class Client:
 
 #===================================================================================================================================#
 #===================================================================================================================================#
-
-Client().client_start()

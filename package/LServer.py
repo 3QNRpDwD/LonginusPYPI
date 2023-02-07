@@ -11,6 +11,7 @@ from asyncio import *
 from hashlib import sha256
 from argon2 import PasswordHasher
 import re,base64,requests,struct,hmac,logging,pickle,secrets
+import winreg
 from multiprocessing import Process
 
 __all__=['Server']
@@ -26,6 +27,17 @@ file_handler = logging.FileHandler('server.log')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
+class Regedit:
+    def __init__(self):
+        self.Console_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Console", 0, winreg.KEY_WRITE)
+        self.logger=logger
+
+    def _Set_Console_VirtualTerminalLevel(self,level=1):
+        try:
+            winreg.SetValueEx(self.Console_key, "VirtualTerminalLevel", 0, winreg.REG_DWORD, level)
+            logger.info('[ Registry value change '+'\033[32m'+'succeeded'+'\033[0m'+' ] ==> VirtualTerminalLevel ')
+        except Exception():
+            logger.info('[ Registry value change '+'\033[31m'+'failed'+'\033[0m'+'  ] ==> VirtualTerminalLevel ')
 
 class Server:
     c=''
@@ -50,7 +62,8 @@ class Server:
         self.Lock=threading.Lock()
 
     def run(self):
-        print(self.FileManagement().loader())
+        self.FileManagement().loader()
+        
         Server.N=self.Network()
         self.N.bind_address(self.set_addr, self.set_port)
         Server.N.listen(0)
@@ -63,23 +76,25 @@ class Server:
 
     def handler_connection(self):
         while True:
-            # try:
+            try:
                 self.receive_function()
                 self.protocol_execution()
-            # except Exception as e:
-            #     self.ERROR().error_handler(str(e))
+            except Exception as e:
+                self.logger.info('handler_connection')
+                self.ERROR().error_handler(str(e))
 
     def receive_function(self):
-        # try:
+        try:
             self.buffer_size=self.N.recv_head()
             self.recv_data=self.N.recv(self.buffer_size)
             self.obj=self.DATA(self.recv_data)
             self.json_obj,self.hmac_hash=self.obj.json_decompress()
-        # except Exception as e:
-        #     self.ERROR().error_handler(str(e))
+        except Exception as e:
+            self.logger.info('receive_function')
+            self.ERROR().error_handler(str(e))
 
     def protocol_execution(self):
-        # try:
+        try:
             self.SSL=self.SSLConnection('0.5.0',self.json_obj)
             self.handle=self.HANDLERS('0.5.0',self.json_obj)
             self.content_type=self.json_obj['request-head']['content-type']
@@ -96,8 +111,9 @@ class Server:
             elif (self.content_type == 'client_master_secret' and self.protocol == 'request'):
                 self.handle.request_handler()
             else: self.ERROR().error_handler('Abnormal access detected')
-        # except Exception as e:
-        #    self.ERROR().error_handler(str(e))
+        except Exception as e:
+            self.logger.info('protocol_execution')
+            self.ERROR().error_handler(str(e))
         
 
 #===================================================================================================================================#
@@ -117,8 +133,8 @@ class Server:
         def bind_address(self,set_addr, set_port):
             self.req = requests.get("http://ipconfig.kr")
             self.req = str(re.search(r'IP Address : (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', self.req.text)[1])
-            self.logger.info('[ Server started on '+'\033[32m'+'complete'+'\033[0m'+' ] => ' + self.req+':'+str(set_port))
             self.s.bind((set_addr, set_port))
+            self.logger.info('[ Server started on '+'\033[32m'+'complete'+'\033[0m'+' ] ==> ' + self.req+':'+str(set_port))
 
         def listen(self,Volume):
             self.s.listen(Volume)
@@ -128,7 +144,7 @@ class Server:
             Server.Network.col_addr='\033[33m'+f'{self.addr}'+'\033[0m'
             Server.ip=str(self.addr).split("'")[1]
             Server.col_ip='('+'\033[38;5;214m'+Server.ip+'\033[0m'+')'
-            self.logger.info('[ '+'\033[32m'+'Connected'+'\033[0m'+' with ] : '+Server.Network.col_addr)
+            self.logger.info('[ '+'\033[32m'+'Connected'+'\033[0m'+' with ] ==> '+Server.Network.col_addr)
 
         def recv_head(self):
 
@@ -177,11 +193,11 @@ class Server:
             self.logger=logger
 
         def json_decompress(self):
-            # try:
+            try:
                 self.compression_data = self.data
                 if b'.' not in self.compression_data:
                     self.jsobj = base64.b85decode(self.compression_data).decode()
-                    self.logger.info('[ Data decompressed '+'\033[32m'+'complete'+'\033[0m'+' ]: \n'+str(self.jsobj))
+                    self.logger.info('[ Data decompressed '+'\033[32m'+'complete'+'\033[0m'+' ] ==> \n'+str(self.jsobj))
                     self.jsobj = json.loads(self.jsobj)
                 else:
                     self.recv_obj=self.compression_data.decode().split('.')
@@ -193,15 +209,14 @@ class Server:
                         Server().ERROR().error_handler('Tampering, forged false request')
                         return 'Tampering, forged false request'
                 return self.jsobj,self.hmac_hash
-            # except Exception:
-            #     print(self.compression_data)
-            #     Server().Network().send(b'thank you! Server test was successful thanks to you, This message is a temporary message written to convey thanks to you, and it is a disclaimer that the server is operating normally.')
+            except Exception as e:
+                self.logger.info(str(e))
+                self.logger.info(str(self.compression_data))
+                Server().Network().send(b'thank you! Server test was successful thanks to you, This message is a temporary message written to convey thanks to you, and it is a disclaimer that the server is operating normally.')
 
         def master_key_selector(self,json_obj):
             self.session_id=json_obj['request-head']['session-id']
             self.login_id=json_obj['request-head']['login-id']
-            print(self.login_id)
-            print(self.session_id)
             if self.login_id !=None:
                 self.master_key=Server.login_session_keys[json_obj['request-head']['login-id']]
                 return self.master_key
@@ -282,6 +297,7 @@ class Server:
             self.logger.info(f'[ Change Cipher Spec-'+'\033[32m'+'Finished'+'\033[0m'+' ]'+Server.col_ip+' ')
             Server.N.send_and_close(base64.b85encode(self.jsobj_dump.encode()))
 
+
 #===================================================================================================================================#
 #===================================================================================================================================#
 
@@ -309,8 +325,8 @@ class Server:
             self.verified_Userpw=self.SU.pwd_hashing(self.verified_Userpw)
             if (Server.sessions[self.session_id]['external_ip']==Server.ip):
                 if Server().User(self.verified_Userid,self.verified_Userpw)._permission_checker(Server.ip):
-                    Server().DBManagement(group='__administrator__').new_database_definition(self.verified_Userid,self.verified_Userpw,Server.ip)
-                Server().DBManagement(group='__user__').new_database_definition(self.verified_Userid,self.verified_Userpw,Server.ip)
+                    Server().DBManagement(group='__administrator__').new_database_definition(self.verified_Userid,self.verified_Userpw,0)
+                Server().DBManagement(group='__user__').new_database_definition(self.verified_Userid,self.verified_Userpw,1)
                 Server().FileManagement().save_database()
                 self.logger.info(f'[ User info update '+'\033[32m'+'complete'+'\033[0m'+' ]'+Server.col_ip+': '+self.verified_Userid)
                 self.jsobj_dump=self.SD.Create_json_object(content_type='Sign_Up-report',platform='server',version=self.set_version,
@@ -356,7 +372,7 @@ class Server:
                                                     server_error=' [ unexpected error ]: '+msg)
                 Server.N.send_and_close(self.jsobj_dump.encode())
             except Exception as e:
-                print('[ unexpected error ]:' ,e)
+                self.logger.info('[ unexpected error ]:' ,e)
 
 #===================================================================================================================================#
 #===================================================================================================================================#
@@ -376,7 +392,7 @@ class Server:
             token=Longinus().Random_Token_generator(8)
             new_database = {'user_id': self.verified_UserID, 'user_pw': self.verified_Userpw, 'permission_lv': self.permission_lv, 'group': self.group}
             Server.database[token.decode()]=new_database
-            self.logger.info(f'[ New user database creation '+'\033[32m'+'complete'+'\033[0m'+' ]: '+str(new_database))
+            self.logger.info(f'[ New user database creation '+'\033[32m'+'complete'+'\033[0m'+' ] ==> '+str(new_database))
             return new_database
 
     class SessionManager:
@@ -564,5 +580,3 @@ class Server:
             return temp
 #===================================================================================================================================#
 #===================================================================================================================================#
-
-Server().run()

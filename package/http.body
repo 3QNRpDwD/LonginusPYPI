@@ -1,0 +1,25 @@
+
+{
+    'request-head':
+        {
+            'content-type':content_type, 
+            'platform':platform,
+            'version':version,
+            'addres':addres,
+            'protocol':protocol,
+            'random_token':random_token,
+            'random_token_length':random_token_length,
+            'session-id':session_id,
+            'session-id_length':session_id_length,
+            'login-id':login_id,
+            'login-id_length':login_id_length
+        },
+
+    'request-body':
+        {
+            'userid':userid,
+            'userpw':userpw,
+            'pre_master_key':pre_master_key,
+            'master_secret':master_secret
+        }
+}
