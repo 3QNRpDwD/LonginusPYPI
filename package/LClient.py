@@ -173,6 +173,32 @@ class Client:
 
 #===================================================================================================================================#
 #===================================================================================================================================#
+    class generate_header:
+        def __init__(self,data):
+            self.data=data
+
+        def get():
+            pass
+
+        def _Prepar_GeneralHeader():
+            pass
+
+        def _Prepar_RequestHeader():
+            pass
+
+        def _Prepar_EntityHeader():
+            pass
+
+    class Check_type:
+        def __init__(self,obj):
+            self.obj=obj
+
+        def is_json(self):
+            try:
+                json_object = json.loads(self.obj)
+            except Exception as e:
+                return False
+            return True
 
     def Create_json_object(self,content_type:str=None,platform:str=None,version:str=None,
                                         addres:str=None,protocol:str=None,random_token:str=None,
@@ -404,3 +430,6 @@ class Client:
 
 #===================================================================================================================================#
 #===================================================================================================================================#
+
+
+
