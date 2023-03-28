@@ -173,32 +173,55 @@ class Client:
 
 #===================================================================================================================================#
 #===================================================================================================================================#
-    class generate_header:
-        def __init__(self,data):
-            self.data=data
+    class HyperText_Transfer_Protocol:
+        def __init__(self) -> None:
+            self.HyperText=''
 
-        def get():
+        def hrecv(self):
+            while self.HyperText in '\r\n\r\n':
+                pass
+
+        def get(self):
+            print(self.prepare_header().headers())
             pass
 
-        def _Prepar_GeneralHeader():
+        def post(self):
             pass
 
-        def _Prepar_RequestHeader():
-            pass
+        class prepare_header:
+            def __init__(self,User_Agent='LonginusPyPiAlpha',body=None,status_code="GET /HTTP/1.1"):
+                self.body=body
+                self.default_header={
+                    "User-Agent": User_Agent + '\r\n',
+                    "Accept-Encoding": 'gzip, deflate\r\n',
+                    "Accept": "application/json\r\n",
+                    "Connection": "keep-alive\r\n",
+                }
+                self.string_header=str(self.default_header)+'\r\n'
+                print(self)
 
-        def _Prepar_EntityHeader():
-            pass
+            def headers(self):
+                return str(self.default_header)
 
-    class Check_type:
-        def __init__(self,obj):
-            self.obj=obj
+            def _Prepar_GeneralHeader(self):
+                pass
 
-        def is_json(self):
-            try:
-                json_object = json.loads(self.obj)
-            except Exception as e:
-                return False
-            return True
+            def _Prepar_RequestHeader(self):
+                pass
+
+            def _Prepar_EntityHeader(self):
+                pass
+
+        class Check_type:
+            def __init__(self,obj):
+                self.obj=obj
+
+            def is_json(self):
+                try:
+                    json_object = json.loads(self.obj)
+                except Exception as e:
+                    return False
+                return True
 
     def Create_json_object(self,content_type:str=None,platform:str=None,version:str=None,
                                         addres:str=None,protocol:str=None,random_token:str=None,
@@ -433,3 +456,4 @@ class Client:
 
 
 
+Client().HyperText_Transfer_Protocol().get()

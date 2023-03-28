@@ -14,30 +14,38 @@ import re,base64,requests,struct,hmac,logging,pickle,secrets
 import winreg
 from multiprocessing import Process
 
-__all__=['Server','Regedit']
+__all__=['Server','Regedit','Log']
 
+class Log:
+    def __init__(self):
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.INFO)
+        self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(formatter)
-logger.addHandler(stream_handler)
-file_handler = logging.FileHandler('server.log')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
+    def set_logger(self):
+        if not self.logger.handlers:
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(self.formatter)
+            self.logger.addHandler(stream_handler)
+            file_handler = logging.FileHandler('server.log')
+            file_handler.setFormatter(self.formatter)
+            self.logger.addHandler(file_handler)
+
+    def loging(self, msg):
+        self.set_logger()
+        self.logger.info(msg)
 
 class Regedit:
     def __init__(self):
         self.Console_key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Console", 0, winreg.KEY_WRITE)
-        self.logger=logger
+        self.logger=Log()
 
     def _Set_Console_VirtualTerminalLevel(self,level=1):
         try:
             winreg.SetValueEx(self.Console_key, "VirtualTerminalLevel", 0, winreg.REG_DWORD, level)
-            logger.info('[ Registry value change '+'\033[32m'+'succeeded'+'\033[0m'+' ] ==> VirtualTerminalLevel ')
+            self.logger.loging('[ Registry value change '+'\033[32m'+'succeeded'+'\033[0m'+' ] ==> VirtualTerminalLevel ')
         except Exception():
-            logger.info('[ Registry value change '+'\033[31m'+'failed'+'\033[0m'+'  ] ==> VirtualTerminalLevel ')
+            self.logger.loging('[ Registry value change '+'\033[31m'+'failed'+'\033[0m'+'  ] ==> VirtualTerminalLevel ')
 class Server:
     c=''
     addr=''
@@ -47,7 +55,7 @@ class Server:
         global version
         self.set_port=port;self.set_addr=addres;self.cipherdata=bytes();self.decrypt_data=bytes()
         self.version=set_version
-        self.logger=logger;
+        self.logger=Log()
         self.Lock=threading.Lock()
 
     def run(self):
@@ -84,7 +92,7 @@ class Server:
                 self.receive_function()
                 self.protocol_execution()
             except Exception as e:
-                self.logger.info('handler_connection')
+                self.logger.loging('handler_connection')
                 ERROR().error_handler(str(e))
 
     def receive_function(self):
@@ -93,10 +101,11 @@ class Server:
             global json_obj,hmac_hash
             self.buffer_size=net.recv_head()
             self.recv_data=net.recv(self.buffer_size)
+            print(self.recv_data)
             self.obj=DATA(self.recv_data)
             json_obj,hmac_hash=DATA.json_decompress()
         except Exception as e:
-            self.logger.info('receive_function')
+            self.logger.loging('receive_function')
             ERROR().error_handler(str(e))
 
     def protocol_execution(self):
@@ -118,7 +127,7 @@ class Server:
                 self.handle.request_handler()
             else: self.ERROR().error_handler('Abnormal access detected')
         except Exception as e:
-            self.logger.info('protocol_execution')
+            self.logger.loging('protocol_execution')
             ERROR().error_handler(str(e))
         
 
@@ -131,14 +140,15 @@ class Network:
     def __init__(self):
         self.head=bytes()
         self.recv_datas=bytes()
-        self.logger=logger
+        self.logger=Log()
+        
         self.s=socket()
 
     def bind_address(self,set_addr, set_port):
         self.req = requests.get("http://ipconfig.kr")
         self.req = str(re.search(r'IP Address : (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', self.req.text)[1])
         self.s.bind((set_addr, set_port))
-        self.logger.info('[ Server started on '+'\033[32m'+'complete'+'\033[0m'+' ] ==> ' + self.req+':'+str(set_port))
+        self.logger.loging('[ Server started on '+'\033[32m'+'complete'+'\033[0m'+' ] ==> ' + self.req+':'+str(set_port))
 
     def listen(self,Volume):
         self.s.listen(Volume)
@@ -149,7 +159,7 @@ class Network:
         col_addr='\033[33m'+f'{self.addr}'+'\033[0m'
         ip=str(self.addr).split("'")[1]
         col_ip='('+'\033[38;5;214m'+ip+'\033[0m'+')'
-        self.logger.info('[ '+'\033[32m'+'Connected'+'\033[0m'+' with ] ==> '+col_addr)
+        self.logger.loging('[ '+'\033[32m'+'Connected'+'\033[0m'+' with ] ==> '+col_addr)
 
     def recv_head(self):
 
@@ -160,7 +170,7 @@ class Network:
             self.accept_connection()
             self.head = self.c.recv(4)
             self.head = int(struct.unpack("I", self.head)[0])
-        self.logger.info(f'[ Header '+'\033[32m'+'received'+'\033[0m'+' ]'+col_addr+': '+str(self.head))
+        self.logger.loging(f'[ Header '+'\033[32m'+'received'+'\033[0m'+' ]'+col_addr+': '+str(self.head))
         return self.head
 
     def recv(self,buffer_size:int):
@@ -171,52 +181,52 @@ class Network:
         else:
             self.recv_datas = bytearray()
             for i in range(int(self.head / 2048)):
-                self.logger.info(f' ['+'\033[32m'+ 'Receiving data'+'%' +'\033[0m'+']'+col_addr+':' +'\033[32m'+ str(2048 * i / self.head * 100)+'%' +'\033[0m')
+                self.logger.loging(f' ['+'\033[32m'+ 'Receiving data'+'%' +'\033[0m'+']'+col_addr+':' +'\033[32m'+ str(2048 * i / self.head * 100)+'%' +'\033[0m')
                 self.recv_datas += self.c.recv(2048)
-            self.logger.info(f' [ Receiving data]: '+'\033[32m'+'100%'+'\033[0m')
-        self.logger.info(f'[ Data '+'\033[32m'+'received'+'\033[0m'+' ]'+col_addr+': '+str(len(self.recv_datas))+' bytes')
+            self.logger.loging(f' [ Receiving data]: '+'\033[32m'+'100%'+'\033[0m')
+        self.logger.loging(f'[ Data '+'\033[32m'+'received'+'\033[0m'+' ]'+col_addr+': '+str(len(self.recv_datas))+' bytes')
         return self.recv_datas
 
     def send(self, data: bytes):
         head = struct.pack("I", len(data))
         self.c.sendall(head + data)
-        self.logger.info(f'[ Data '+'\033[32m'+'sent'+'\033[0m'+' ]'+col_addr+': '+str(len(data))+' bytes')
+        self.logger.loging(f'[ Data '+'\033[32m'+'sent'+'\033[0m'+' ]'+col_addr+': '+str(len(data))+' bytes')
 
     def send_and_close(self, data: bytes):
         head = struct.pack("I", len(data))
         self.c.sendall(head + data)
-        self.logger.info(f'[ Data '+'\033[32m'+'sent'+'\033[0m'+' ]'+col_addr+': '+str(len(data))+' bytes')
+        self.logger.loging(f'[ Data '+'\033[32m'+'sent'+'\033[0m'+' ]'+col_addr+': '+str(len(data))+' bytes')
         self.c.close()
-        self.logger.info(f'[ socket '+'\033[31m'+'Closed'+'\033[0m'+' ]'+col_addr+'')
-
+        self.logger.loging(f'[ socket '+'\033[31m'+'Closed'+'\033[0m'+' ]'+col_addr+'')
 
 class DATA:
     def __init__(self,data=bytes()):
         self.data=data
         self.hmac_hash =bytes()
         self.jsobj=str()
-        self.logger=logger
+        self.logger=Log()
+        
 
     def json_decompress(self):
         try:
             self.compression_data = self.data
             if b'.' not in self.compression_data:
                 self.jsobj = base64.b85decode(self.compression_data).decode()
-                self.logger.info('[ Data decompressed '+'\033[32m'+'complete'+'\033[0m'+' ] ==> \n'+str(self.jsobj))
+                self.logger.loging('[ Data decompressed '+'\033[32m'+'complete'+'\033[0m'+' ] ==> \n'+str(self.jsobj))
                 self.jsobj = json.loads(self.jsobj)
             else:
                 self.recv_obj=self.compression_data.decode().split('.')
                 self.jsobj = base64.b85decode(self.recv_obj[0].encode())
                 self.hmac_hash = base64.b85decode(self.recv_obj[1].encode())
-                self.logger.info('[ hmac hash found '+'\033[32m'+'successful'+'\033[0m'+' ]'+col_ip+': '+str(self.hmac_hash))
+                self.logger.loging('[ hmac hash found '+'\033[32m'+'successful'+'\033[0m'+' ]'+col_ip+': '+str(self.hmac_hash))
                 self.jsobj = json.loads(self.jsobj)
                 if not self.request_credentials(self.hmac_hash,self.jsobj):
                     ERROR().error_handler('Tampering, forged false request')
                     return 'Tampering, forged false request'
             return self.jsobj,self.hmac_hash
         except Exception as e:
-            self.logger.info(str(e))
-            self.logger.info(str(self.compression_data))
+            self.logger.loging(str(e))
+            self.logger.loging(str(self.compression_data))
             Network().send(b'thank you! Server test was successful thanks to you, This message is a temporary message written to convey thanks to you, and it is a disclaimer that the server is operating normally.')
 
     def master_key_selector(self,json_obj):
@@ -234,7 +244,7 @@ class DATA:
     def request_credentials(self,hmac_hash,json_obj):
         self.master_key=self.master_key_selector(json_obj)
         if (hmac_hash==hmac.digest(self.master_key,json.dumps(self.jsobj,indent=2).encode(),sha256)):
-            logger.info(f'[ Session Credentials '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': '+str(hmac_hash))
+            self.logger.loging(f'[ Session Credentials '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': '+str(hmac_hash))
             return True
         else:
             return False
@@ -266,7 +276,7 @@ class DATA:
                     }
         }
         self.jsobj_dump= json.dumps(self.jsobj,indent=2)
-        self.logger.info('[ Create json object '+'\033[32m'+'complete'+'\033[0m'+ ' ]'+col_ip+f': \n {str(self.jsobj_dump)}')
+        self.logger.loging('[ Create json object '+'\033[32m'+'complete'+'\033[0m'+ ' ]'+col_ip+f': \n {str(self.jsobj_dump)}')
         return self.jsobj_dump
 
 #===================================================================================================================================#
@@ -276,7 +286,8 @@ class SSLConnection:
     def __init__(self,json_obj):
         self.SD=DATA()
         self.SC=Crypto('')
-        self.logger=logger
+        self.logger=Log()
+        
         self.json_obj=json_obj
 
     def server_hello(self):
@@ -287,13 +298,13 @@ class SSLConnection:
                                             protocol='server_hello',random_token=self.token.decode(),random_token_length=len(self.token),
                                             public_key=pul_key,public_key_length=len(pul_key))
         net.send(base64.b85encode(self.jsobj_dump.encode()))
-        self.logger.info(f'[ server hello transmission '+'\033[32m'+'complete'+'\033[0m'+']'+col_ip)
+        self.logger.loging(f'[ server hello transmission '+'\033[32m'+'complete'+'\033[0m'+']'+col_ip)
 
     def Create_master_secret(self):
         global prv_key
         self.master_key=self.SC._decrypt_rsa(prv_key,base64.b85decode(self.json_obj['request-body']['pre_master_key']))
         self.session_id=SessionManager(self.json_obj).session_creation(self.master_key)
-        self.logger.info(f'[ Master secret creation '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': ' +str(self.session_id))
+        self.logger.loging(f'[ Master secret creation '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': ' +str(self.session_id))
         return self.session_id,self.master_key
 
     def ChangeCipherSpec_Finished(self,session_id=None):
@@ -301,7 +312,7 @@ class SSLConnection:
         self.jsobj_dump=self.SD.Create_json_object(content_type='handshake',platform='server',version=version,
                                             protocol='Change_Cipher_Spec',
                                             session_id=session_id,session_id_length=len(session_id))
-        self.logger.info(f'[ Change Cipher Spec-'+'\033[32m'+'Finished'+'\033[0m'+' ]'+col_ip+' ')
+        self.logger.loging(f'[ Change Cipher Spec-'+'\033[32m'+'Finished'+'\033[0m'+' ]'+col_ip+' ')
         net.send_and_close(base64.b85encode(self.jsobj_dump.encode()))
 
 
@@ -320,7 +331,8 @@ class HANDLERS:
                 self.UserID,self.Userpw=Crypto(self.master_key).Decrypt_user_data(self.UserID,self.Userpw)
                 self.SU=User(self.UserID.decode(),self.Userpw.decode())
                 self.verified_Userid,self.verified_Userpw=self.SU.verify_credentials()
-        self.logger=logger
+        self.logger=Log()
+        
         self.SD=DATA()
 
     def Sign_Up_handler(self):
@@ -335,7 +347,7 @@ class HANDLERS:
                 DBManagement(group='__administrator__').new_database_definition(self.verified_Userid,self.verified_Userpw,0)
             DBManagement(group='__user__').new_database_definition(self.verified_Userid,self.verified_Userpw,1)
             FileManagement().save_database()
-            self.logger.info(f'[ User info update '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': '+self.verified_Userid)
+            self.logger.loging(f'[ User info update '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': '+self.verified_Userid)
             self.jsobj_dump=self.SD.Create_json_object(content_type='Sign_Up-report',platform='server',version=version,
                                         protocol='Sign_up_complete')
             self.verified_jsobj_dump=Crypto(self.master_key).hmac_cipher(self.jsobj_dump.encode())
@@ -356,7 +368,7 @@ class HANDLERS:
                                                     protocol='welcome! ',
                                                     login_id=self.login_id,login_id_length=len(self.login_id))
                         self.verified_jsobj_dump=Crypto(self.master_key).hmac_cipher(self.jsobj_dump.encode())
-                        self.logger.info(f'[ Login '+'\033[32m'+'successful'+'\033[0m'+' ]'+col_ip+': '+str(self.login_id))
+                        self.logger.loging(f'[ Login '+'\033[32m'+'successful'+'\033[0m'+' ]'+col_ip+': '+str(self.login_id))
                         net.send_and_close(self.verified_jsobj_dump)
                 #except Exception: ERROR().error_handler('The password does not match the supplied hash')
             else: ERROR().error_handler('The user could not be found. Please proceed to sign up')
@@ -364,7 +376,7 @@ class HANDLERS:
     def request_handler(self):
         global net
         self.reqdata=Crypto(self.master_key)._decrypt_aes(base64.b85decode(self.json_obj['request-body']['master_secret']))
-        self.logger.info('[ \033[32m'+'get request'+'\033[0m'+' ]'+col_ip+':' f' {self.reqdata.decode()}')
+        self.logger.loging('[ \033[32m'+'get request'+'\033[0m'+' ]'+col_ip+':' f' {self.reqdata.decode()}')
         self.jsobj_dump=self.SD.Create_json_object(content_type='server_master_secret',platform='server',version=version,
                                     protocol='response',master_secret=base64.b85encode(Crypto(self.master_key)._encrypt_aes(self.reqdata)).decode())
         self.verified_jsobj_dump=Crypto(self.master_key).hmac_cipher(self.jsobj_dump.encode())
@@ -374,22 +386,24 @@ class ERROR:
     def error_handler(self,msg):
         global net
         try:
-            self.logger=logger
+            self.logger=Log()
+            
             self.SD=DATA()
-            self.logger.info('[ '+'\033[31m'+'unexpected error'+'\033[0m'+ ' ]: ' +msg)
-            self.jsobj_dump=self.SD.Create_json_object(content_type='return_error',platform='server',version=set_version,
+            self.logger.loging('[ '+'\033[31m'+'unexpected error'+'\033[0m'+ ' ]: ' +msg)
+            self.jsobj_dump=self.SD.Create_json_object(content_type='return_error',platform='server',version=version,
                                                 protocol='error',
                                                 server_error=' [ unexpected error ]: '+msg)
             net.send_and_close(self.jsobj_dump.encode())
         except Exception as e:
-            self.logger.info('[ unexpected error ]:' ,e)
+            self.logger.loging('[ unexpected error ]:' ,e)
 
 #===================================================================================================================================#
 #===================================================================================================================================#
 
 class DBManagement:
     def __init__(self,group='__user__'):
-        self.logger=logger
+        self.logger=Log()
+        
         self.group=group
 
     def new_database_definition(self,verified_UserID,verified_Userpw, permission_lv=1):
@@ -405,14 +419,15 @@ class DBManagement:
         Account_ID.update(new_database)
         Account_ID=Account_ID.hexdigest()
         new_database.update('Account-ID',Account_ID)
-        self.logger.info(f'[ New account ID issued '+'\033[32m'+'successfully'+'\033[0m'+' ] ==> '+str(Account_ID))
+        self.logger.loging(f'[ New account ID issued '+'\033[32m'+'successfully'+'\033[0m'+' ] ==> '+str(Account_ID))
         database.append(new_database)
-        self.logger.info(f'[ New user database creation '+'\033[32m'+'complete'+'\033[0m'+' ] ==> '+str(Account_ID))
+        self.logger.loging(f'[ New user database creation '+'\033[32m'+'complete'+'\033[0m'+' ] ==> '+str(Account_ID))
         return new_database
 
 class SessionManager:
     def __init__(self,json_obj):
-        self.logger=logger
+        self.logger=Log()
+        
         self.json_obj=json_obj
         self.session_id=json_obj['request-head']['session-id']
         self.internal_ip=json_obj['request-head']['addres']
@@ -423,7 +438,7 @@ class SessionManager:
         session_id, session_info = self.session_generator()
         sessions[session_id]=session_info
         session_keys[session_id]=master_key
-        self.logger.info(f'[ Session assignment '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': '+str(session_id))
+        self.logger.loging(f'[ Session assignment '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': '+str(session_id))
         return session_id
 
     def login_session_creation(self, data):
@@ -435,7 +450,7 @@ class SessionManager:
         new_login_session = {login_id: {'data':data, 'session_info':session_info}}
         login_sessions.update(new_login_session)
         login_session_keys[login_id]=session_keys[self.session_id]
-        self.logger.info(f'[ login Session assignment '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': '+str(login_id))
+        self.logger.loging(f'[ login Session assignment '+'\033[32m'+'complete'+'\033[0m'+' ]'+col_ip+': '+str(login_id))
         return login_id
 
     def session_generator(self,length=32,session_validity=7):
@@ -448,7 +463,7 @@ class SessionManager:
     def discard_session(self, session_id):
         global sessions
         global session_keys
-        self.logger.info(f'[ Session '+'\033[31m'+'discarded'+'\033[0m'+'] '+col_ip+': '+str(session_id))
+        self.logger.loging(f'[ Session '+'\033[31m'+'discarded'+'\033[0m'+'] '+col_ip+': '+str(session_id))
         if sessions:
             del sessions[session_id]
             del session_keys[session_id]
@@ -457,6 +472,9 @@ class SessionManager:
         pass
 
 class FileManagement:
+    def __init__(self) -> None:
+        self.logger=Log()
+        
 
     def loader(self):
         global sessions
@@ -492,23 +510,23 @@ class FileManagement:
     def save_session(self):
         with open('sessions', 'wb') as f:
             pickle.dump({'login_sessions':login_sessions, 'login_session_keys': login_session_keys}, f)
-        logger.info('[ Session data saved '+'\033[32m'+'completed'+'\033[0m'+' ]')
+        self.logger.loging('[ Session data saved '+'\033[32m'+'completed'+'\033[0m'+' ]')
 
     def load_sessione(self):
         with open('sessions', 'rb') as f:
             session_setup = pickle.load(f)
-        logger.info('[ sessione data load '+'\033[32m'+'completed'+'\033[0m'+' ]')
+        self.logger.loging('[ sessione data load '+'\033[32m'+'completed'+'\033[0m'+' ]')
         return session_setup['login_sessions'], session_setup['login_session_keys']
 
     def save_database(self):
         with open('Server.DB', 'wb') as f:
             pickle.dump(database, f)
-        logger.info('[ Database data saved '+'\033[32m'+'completed'+'\033[0m'+' ]')
+        self.logger.loging('[ Database data saved '+'\033[32m'+'completed'+'\033[0m'+' ]')
 
     def load_database(self):
         with open('Server.DB', 'rb') as f:
             database_setup = pickle.load(f)
-        logger.info('[ Database data load '+'\033[32m'+'completed'+'\033[0m'+' ]')
+        self.logger.loging('[ Database data load '+'\033[32m'+'completed'+'\033[0m'+' ]')
         return database_setup
 
     def _check_database(self):
@@ -530,7 +548,8 @@ class Crypto:
     def __init__(self,master_key=None):
         self.master_key=master_key
         self.ph = PasswordHasher()
-        self.logger=logger
+        self.logger=Log()
+        
 
     def Decrypt_user_data(self,Cypher_userid,Cypher_userpw):
         self.userid=self._decrypt_aes(base64.b85decode(Cypher_userid))
@@ -570,7 +589,8 @@ class User:
         self.ph = PasswordHasher()
         self.UserID = userid
         self.Userpwrd = userpw
-        self.logger=logger
+        self.logger=Log()
+        
 
     def verify_credentials(self):
         if not self._verify_userid():
@@ -612,5 +632,3 @@ class User:
         return temp
 #===================================================================================================================================#
 #===================================================================================================================================#
-
-Server().run()
