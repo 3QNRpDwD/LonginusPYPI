@@ -4,7 +4,6 @@ import threading
 import requests
 import win32api
 import os
-import os
 import psutil
 from collections import deque
 
@@ -33,8 +32,9 @@ class HyperTextTransferProtocol:
             self.Thread.assign_user_thread((c,),addr)
             self.Thread.display_variables()
             self.Thread.Create_Thread(target=self.is_returned())[1].start()
-            print(self.user_thread_result_dict)
             self.send_response()
+            self.Thread.clearSessionInfo(self.find_stopped_thread())
+            self.Thread.display_variables()
 
     def bind_address(self, address='0.0.0.0', port=80):
         req = requests.get("http://ipconfig.kr")
@@ -48,9 +48,9 @@ class HyperTextTransferProtocol:
     def accept_connection(self):
         global ip, col_ip, col_addr
         self.c, self.addr = self.s.accept()
-        col_addr = '\033[33m' + f'{self.addr}' + '\033[0m'
+        col_addr = f'\033[33m{self.addr}\033[0m'
         ip = str(self.addr).split("'")[1]
-        col_ip = '(' + '\033[38;5;214m' + ip + '\033[0m' + ')'
+        col_ip = f'(\033[38;5;214m{ip}\033[0m)'
         print('---------------------------------------------')
         print(f"[Connected with] ==> {col_addr}")
         return self.c, self.addr
@@ -71,12 +71,18 @@ class HyperTextTransferProtocol:
         for user,result in self.user_thread_result_dict.items():
             for user_address,soket in self.Thread.user_socket_dict.items():
                 if user == user_address:
-                    print(soket,result)
-                    soket.send(result)
+                    soket[0].send(result)
                     print(f'[Response sent to] ==> {user_address}')
-                    soket.close()
+                    soket[0].close()
                     print(f'[Disconnected from] ==> {user_address}')
 
+    def find_stopped_thread(self):
+        for thread_name,user_addr in self.Thread.SESSIONS.items():
+            if 'stopped' in str(eval(thread_name)):
+                return thread_name
+            return None
+            
+            
     def is_returned(self):
         while True:
             for thread_name,thread in self.Thread.ACTIVATED_THREADS.items():
@@ -97,11 +103,14 @@ class THREAD_PRESET(threading.Thread):
         self.result = None
 
     def run(self):
-        self.result = self.target(*self.args)
+        try:
+            self.result = self.target(*self.args)
+        except TypeError:
+            pass
 
 class Thread_manager:
-    def __init__(self, ACT_TH={}, MM_USERS=100):
-        self.ACTIVATED_THREADS=ACT_TH
+    def __init__(self, MM_USERS=100):
+        self.ACTIVATED_THREADS={}
         self.MAXIMUM_USERS=MM_USERS
         self.USERS=[]
         self.SESSIONS={}
@@ -142,31 +151,37 @@ class Thread_manager:
         self.SESSIONS[thread_name]=ret_addres
         self.user_socket_dict[ret_addres]=soket
         self.thread_queue.append(thread)
-        # del self.SESSIONS[thread_name]
-        # del self.ACTIVATED_THREADS[thread_name]
-        # del self.USERS[self.USERS.index(ret_addres)]
-        # self.USERS_COUNT-=1
-        # self.THREADS_COUNT-=1
-        # return thread.result
 
     def process_queue(self):
         while True:
             if len(self.thread_queue)!=0:
                 thread=self.thread_queue.popleft()
                 thread.start()
+                
+    def clearSessionInfo(self,thread_name):
+        if thread_name==None:
+            return None
+        user=self.SESSIONS[thread_name]
+        del self.SESSIONS[thread_name]
+        del self.USERS[self.USERS.index(user)]
+        del self.ACTIVATED_THREADS[thread_name]
+        del self.user_socket_dict[user]
+        self.USERS_COUNT-=1
+        self.THREADS_COUNT-=1
+        
 
-    def get_thread_limit(self):
-        system_info = win32api.GetSystemInfo()
-        thread_limit = system_info[6]  # dwNumberOfProcessors
-        return thread_limit
+    # def get_thread_limit(self):
+    #     system_info = win32api.GetSystemInfo()
+    #     thread_limit = system_info[6]  # dwNumberOfProcessors
+    #     return thread_limit
 
-    def get_active_thread_count():
-        system_info = win32api.GetSystemInfo()
-        active_thread_count = system_info.dwNumberOfProcessors * 2  # 추정값
-        return active_thread_count
+    # def get_active_thread_count():
+    #     system_info = win32api.GetSystemInfo()
+    #     active_thread_count = system_info.dwNumberOfProcessors * 2  # 추정값
+    #     return active_thread_count
 
-    def get_available_threads(self):
-        print(self.get_thread_limit(),self.get_current_thread_count())
+    # def get_available_threads(self):
+    #     print(self.get_thread_limit(),self.get_current_thread_count())
 
 class PrepareHeader:
     def __init__(self, user_agent='127.0.0.1', body=None, status_code="HTTP/1.1 200 OK"):
