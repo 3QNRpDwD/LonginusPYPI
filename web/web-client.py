@@ -43,7 +43,6 @@ def request2():
     http = HyperTextTransferProtocol()
 
     while True:
-        response = None
         user_input = input('Request : ') # example : [method *Currently, only the GET method is supported. ] [domain or server addres]  [key=value]
         tokens = user_input.split(' ')
 
@@ -61,6 +60,7 @@ def request2():
                         params[param[0]] = param[1]
 
             try:
+                response = None
                 response = http.get(url=url, params=params)
                 print(response.decode())
             except ConnectionError:

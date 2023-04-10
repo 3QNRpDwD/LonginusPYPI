@@ -30,11 +30,10 @@ class HyperTextTransferProtocol:
         while True:
             c,addr=self.accept_connection()
             self.Thread.assign_user_thread((c,),addr)
-            self.Thread.display_variables()
             self.Thread.Create_Thread(target=self.is_returned())[1].start()
             self.send_response()
-            self.Thread.clearSessionInfo(self.find_stopped_thread())
-            self.Thread.display_variables()
+            self.find_stopped_thread()
+            self.Thread.clearSessionInfo()
 
     def bind_address(self, address='0.0.0.0', port=80):
         req = requests.get("http://ipconfig.kr")
@@ -77,10 +76,9 @@ class HyperTextTransferProtocol:
                     print(f'[Disconnected from] ==> {user_address}')
 
     def find_stopped_thread(self):
-        for thread_name,user_addr in self.Thread.SESSIONS.items():
-            if 'stopped' in str(eval(thread_name)):
-                return thread_name
-            return None
+        for thread_name,thread in self.Thread.ACTIVATED_THREADS.items():
+            if 'stopped' in str(thread):
+                self.Thread.stopped_threads[thread_name]=thread
             
             
     def is_returned(self):
@@ -119,6 +117,7 @@ class Thread_manager:
         self.thread_result_dict={}
         self.thread_queue=deque([])
         self.user_socket_dict={}
+        self.stopped_threads={}
 
     def display_variables(self):
         LIST_VARIABLES=f'''
@@ -130,6 +129,7 @@ class Thread_manager:
                             'THREADS_COUNT':{self.THREADS_COUNT}
                             'THREADS_queue':{self.thread_queue}
                             'user_socket_dict':{self.user_socket_dict}
+                            'stopped_threads':{self.stopped_threads}
                         '''
         print(LIST_VARIABLES)
 
@@ -137,11 +137,11 @@ class Thread_manager:
     def Create_Thread(self, target, args=(), daemon=False):
             while True:
                 new_thread_name='THREAD_{}'.format(self.THREADS_COUNT)
+                self.THREADS_COUNT+=1
                 if new_thread_name not in self.ACTIVATED_THREADS.keys():
                     globals()[new_thread_name] = THREAD_PRESET(target=target,args=args,daemon=daemon)
                     new_thread=globals()[new_thread_name]
                     self.ACTIVATED_THREADS[new_thread_name]=new_thread
-                    self.THREADS_COUNT+=1
                     return new_thread_name,new_thread
     
     def assign_user_thread(self,soket,ret_addres):
@@ -158,16 +158,20 @@ class Thread_manager:
                 thread=self.thread_queue.popleft()
                 thread.start()
                 
-    def clearSessionInfo(self,thread_name):
-        if thread_name==None:
-            return None
-        user=self.SESSIONS[thread_name]
-        del self.SESSIONS[thread_name]
-        del self.USERS[self.USERS.index(user)]
-        del self.ACTIVATED_THREADS[thread_name]
-        del self.user_socket_dict[user]
-        self.USERS_COUNT-=1
-        self.THREADS_COUNT-=1
+    def clearSessionInfo(self):
+        self.display_variables()
+        for thread_name in self.stopped_threads.copy().keys():
+            self.stopped_threads[thread_name]
+            if thread_name in self.SESSIONS.copy().keys():
+                user=self.SESSIONS[thread_name]
+                print(user)
+                del self.SESSIONS[thread_name]
+                del self.user_socket_dict[user]
+                del self.USERS[self.USERS.index(user)]
+                self.USERS_COUNT-=1
+            del self.ACTIVATED_THREADS[thread_name]
+            self.THREADS_COUNT-=1
+        self.display_variables()
         
 
     # def get_thread_limit(self):
