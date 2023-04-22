@@ -38,9 +38,7 @@ class HyperTextTransferProtocol:
                '\r\n'.join([f'{key}: {value}' for key, value in headers.items()]) + \
                '\r\n\r\n'
 
-
 def request2():
-    http = HyperTextTransferProtocol()
 
     while True:
         user_input = input('Request : ') # example : [method *Currently, only the GET method is supported. ] [domain or server addres]  [key=value]
@@ -61,11 +59,16 @@ def request2():
 
             try:
                 response = None
-                response = http.get(url=url, params=params)
+                response = HyperTextTransferProtocol().get(url=url, params=params)
                 print(response.decode())
             except ConnectionError:
                 print('Connection error. Please try again.')
         else:
             print('Invalid request.')
+a=1
+while True:
+    HyperTextTransferProtocol().get(url='127.0.0.1')
+    print(a)
+    a+=1
+    
             
-request2()

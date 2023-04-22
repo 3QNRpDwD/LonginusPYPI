@@ -2,12 +2,7 @@ import re
 import socket
 import threading
 import requests
-import win32api
-import os
-import psutil
 from collections import deque
-
-
 
 
 class HyperTextTransferProtocol:
@@ -16,24 +11,25 @@ class HyperTextTransferProtocol:
         self.recv_datas = bytes()
         self.s = socket.socket()
         self.Thread=Thread_manager()
-        self.user_thread_result_dict={}
-
-    def start_service(self):
+        
+    def start_web_server(self):
         self.bind_address()
         self.listen()
-        #thread.get_available_threads()
-        self.Thread.Create_Thread(target=self.run_http)[1].start()
-        self.Thread.process_queue()
-
-
-    def run_http(self):
+        self.Thread.Create_Thread(self.Thread.process_queue)[1].start()
         while True:
-            c,addr=self.accept_connection()
-            self.Thread.assign_user_thread((c,),addr)
-            self.Thread.Create_Thread(target=self.is_returned())[1].start()
-            self.send_response()
-            self.find_stopped_thread()
-            self.Thread.clearSessionInfo()
+            user_info=self.accept_connection()
+            self.Thread.Create_Thread(target=self.handle_request_thread,args=user_info)[1].start()
+
+    def remove_completed_thread(self):
+        self.Thread.find_stopped_thread()
+        self.Thread.clearSessionInfo()
+
+    def handle_request_thread(self,c,addr):
+        thread_name=self.Thread.assign_user_thread((c,),addr)
+        self.Thread.is_returned(thread_name)
+        #self.Thread.display_variables()
+        self.send_response(self.Thread.user_thread_result_dict[addr],[(c,),addr])
+        self.remove_completed_thread()
 
     def bind_address(self, address='0.0.0.0', port=80):
         req = requests.get("http://ipconfig.kr")
@@ -53,44 +49,26 @@ class HyperTextTransferProtocol:
         print('---------------------------------------------')
         print(f"[Connected with] ==> {col_addr}")
         return self.c, self.addr
-
-    def receive_data(self,c=None, MAX_RECV_SIZE=2048):
-        self.recv_datas = b''
+    
+    def receive_data(self, sock=None, max_recv_size=2048):
+        received_data = b''
         while True:
-            if b'\r\n\r\n' in self.recv_datas:
+            if b'\r\n\r\n' in received_data:
                 break
-            if c==None:
-                self.recv_datas += self.c.recv(MAX_RECV_SIZE)
-            self.recv_datas += c.recv(MAX_RECV_SIZE)
-            if b'GET' in self.recv_datas:
+            if sock is None:
+                received_data += self.c.recv(max_recv_size)
+            received_data += sock.recv(max_recv_size)
+            if b'GET' in received_data:
                 print(f'[GET request from] ==> {col_addr}')
-            return self.recv_datas
-
-    def send_response(self):
-        for user,result in self.user_thread_result_dict.items():
-            for user_address,soket in self.Thread.user_socket_dict.items():
-                if user == user_address:
-                    soket[0].send(result)
-                    print(f'[Response sent to] ==> {user_address}')
-                    soket[0].close()
-                    print(f'[Disconnected from] ==> {user_address}')
-
-    def find_stopped_thread(self):
-        for thread_name,thread in self.Thread.ACTIVATED_THREADS.items():
-            if 'stopped' in str(thread):
-                self.Thread.stopped_threads[thread_name]=thread
-            
-            
-    def is_returned(self):
-        while True:
-            for thread_name,thread in self.Thread.ACTIVATED_THREADS.items():
-                for session_name,user_address in self.Thread.SESSIONS.items():
-                    if thread_name == session_name:
-                        if thread.result != None:
-                            user_result=self.user_thread_result_dict[user_address]=thread.result
-                            return user_result
-
-
+            return received_data 
+                    
+    def send_response(self,msg,soket):
+        col_addr = f'\033[33m{soket[1]}\033[0m'
+        soket[0][0].send(msg)
+        print(f'[Response sent to] ==> {col_addr}')
+        soket[0][0].close()
+        print(f'[Disconnected from] ==> {col_addr}')
+        self.Thread.finished_users.append(soket[1])
 
 class THREAD_PRESET(threading.Thread):
     def __init__(self, target, args=() , daemon=False):
@@ -101,10 +79,7 @@ class THREAD_PRESET(threading.Thread):
         self.result = None
 
     def run(self):
-        try:
-            self.result = self.target(*self.args)
-        except TypeError:
-            pass
+        self.result = self.target(*self.args)
 
 class Thread_manager:
     def __init__(self, MM_USERS=100):
@@ -114,10 +89,11 @@ class Thread_manager:
         self.SESSIONS={}
         self.USERS_COUNT=0
         self.THREADS_COUNT=0
-        self.thread_result_dict={}
         self.thread_queue=deque([])
         self.user_socket_dict={}
         self.stopped_threads={}
+        self.user_thread_result_dict={}
+        self.finished_users=[]
 
     def display_variables(self):
         LIST_VARIABLES=f'''
@@ -128,22 +104,13 @@ class Thread_manager:
                             'ACTIVATED_THREADS':{self.ACTIVATED_THREADS},
                             'THREADS_COUNT':{self.THREADS_COUNT}
                             'THREADS_queue':{self.thread_queue}
+                            'user_thread_result_dict':{self.user_thread_result_dict}
                             'user_socket_dict':{self.user_socket_dict}
                             'stopped_threads':{self.stopped_threads}
+                            'finished_users':{self.finished_users}
                         '''
         print(LIST_VARIABLES)
 
-
-    def Create_Thread(self, target, args=(), daemon=False):
-            while True:
-                new_thread_name='THREAD_{}'.format(self.THREADS_COUNT)
-                self.THREADS_COUNT+=1
-                if new_thread_name not in self.ACTIVATED_THREADS.keys():
-                    globals()[new_thread_name] = THREAD_PRESET(target=target,args=args,daemon=daemon)
-                    new_thread=globals()[new_thread_name]
-                    self.ACTIVATED_THREADS[new_thread_name]=new_thread
-                    return new_thread_name,new_thread
-    
     def assign_user_thread(self,soket,ret_addres):
         thread_name,thread = self.Create_Thread(target=HyperTextTransferProtocol().receive_data,args=soket)
         self.USERS.append(ret_addres)
@@ -151,50 +118,67 @@ class Thread_manager:
         self.SESSIONS[thread_name]=ret_addres
         self.user_socket_dict[ret_addres]=soket
         self.thread_queue.append(thread)
+        return thread_name
+
+    def Create_Thread(self, target, args=(), daemon=False):
+        thread_mutex=0
+        while True:
+            new_thread_name='THREAD_{}_{}'.format(target.__name__,thread_mutex)
+            self.THREADS_COUNT+=1
+            if new_thread_name not in self.ACTIVATED_THREADS.keys():
+                globals()[new_thread_name] = THREAD_PRESET(target=target,args=args,daemon=daemon)
+                new_thread=globals()[new_thread_name]
+                self.ACTIVATED_THREADS[new_thread_name]=new_thread
+                return new_thread_name,new_thread
+            else:
+                thread_mutex+=1
+            
+    def is_returned(self,thread_name):
+        while True:
+            for session_name, user_address in self.SESSIONS.copy().items():
+                if thread_name == session_name and eval(thread_name).result is not None:
+                    self.user_thread_result_dict[user_address] = eval(thread_name).result
+                    return self.user_thread_result_dict
+
+    def clearSessionInfo(self):
+        for thread_name,thread in self.stopped_threads.copy().items():
+            for user in self.finished_users.copy():
+                print(user,self.finished_users.copy())
+                if user in self.SESSIONS.copy().values() and thread_name in self.SESSIONS.copy().keys():
+                    del self.SESSIONS[thread_name]
+                    del self.user_socket_dict[user]
+                    del self.USERS[self.USERS.index(user)]
+                    del self.user_thread_result_dict[user]
+                    del self.finished_users[self.finished_users.index(user)]
+                    self.USERS_COUNT-=1
+            thread.join()
+            #thread.is_alive()
+            del self.stopped_threads[thread_name]
+            del self.ACTIVATED_THREADS[thread_name]
+            self.THREADS_COUNT-=1
+        #self.display_variables()
+
 
     def process_queue(self):
         while True:
             if len(self.thread_queue)!=0:
                 thread=self.thread_queue.popleft()
                 thread.start()
-                
-    def clearSessionInfo(self):
-        self.display_variables()
-        for thread_name in self.stopped_threads.copy().keys():
-            self.stopped_threads[thread_name]
-            if thread_name in self.SESSIONS.copy().keys():
-                user=self.SESSIONS[thread_name]
-                print(user)
-                del self.SESSIONS[thread_name]
-                del self.user_socket_dict[user]
-                del self.USERS[self.USERS.index(user)]
-                self.USERS_COUNT-=1
-            del self.ACTIVATED_THREADS[thread_name]
-            self.THREADS_COUNT-=1
-        self.display_variables()
-        
 
-    # def get_thread_limit(self):
-    #     system_info = win32api.GetSystemInfo()
-    #     thread_limit = system_info[6]  # dwNumberOfProcessors
-    #     return thread_limit
-
-    # def get_active_thread_count():
-    #     system_info = win32api.GetSystemInfo()
-    #     active_thread_count = system_info.dwNumberOfProcessors * 2  # 추정값
-    #     return active_thread_count
-
-    # def get_available_threads(self):
-    #     print(self.get_thread_limit(),self.get_current_thread_count())
+    def find_stopped_thread(self):
+        for activated_thread_name,thread in self.ACTIVATED_THREADS.items():
+            if 'stopped' in str(thread) :
+                self.stopped_threads[activated_thread_name]=thread
 
 class PrepareHeader:
-    def __init__(self, user_agent='127.0.0.1', body=None, status_code="HTTP/1.1 200 OK"):
+    def __init__(self, user_agent='127.0.0.1', body=None):
         self.body = body
-        self.string_header = status_code + '\r\n'
+        self.status_code="HTTP/1.1 200 OK"
+        self.string_header = self.status_code + '\r\n'
         self.default_header = {}
         for key, value in self.default_header.items():
             line = f'{key}:{value}'
             self.string_header += line + '\r\n'
         self.string_header += '\r\n'
 
-HyperTextTransferProtocol().start_service()
+HyperTextTransferProtocol().start_web_server()
