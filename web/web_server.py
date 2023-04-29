@@ -1,6 +1,7 @@
 import socket
 import threading
 from urllib import request
+from urllib import parse
 import logging
 import json
 import datetime as dt
@@ -45,56 +46,55 @@ class HyperTextTransferProtocol:
         thread_name, thread = self.Thread.assign_user_thread(socket_and_addres)
         thread.start()
         thread.join()
-        msg=self.compose_http_response(thread)
-        self.send_response(msg,socket_and_addres)
+        query=self.compose_http_response(thread)
+        self.send_response(query,socket_and_addres)
         self.Thread.find_stopped_thread()
         self.Thread.clearSessionInfo(thread_name, addr)
 
     def bind_address(self, address='0.0.0.0', port=80):
         external_ip = request.urlopen('https://ident.me').read().decode('utf8')  
         self.s.bind((address, port))
-        self.log(f"[Server started on] ==> {external_ip}:{port}")
+        self.log(f"[Server started on] ==> \033[96m{external_ip}:{port}\033[0m")
 
     def listen(self, limit=0):
         self.s.listen(limit)
 
     def accept_connection(self):
         self.c, self.addr = self.s.accept()
-        self.log(msg=f"---------------------------------------------")
-        self.log(msg=f"[Connected with] ==> \033[33m{self.addr}\033[0m")
+        self.log(msg=f"[Connected with] ==> \033[32m{self.addr}\033[0m")
         return self.c, self.addr
     
     def receive_data(self,socket=None, addres=None, max_recv_size=2048):
         received_data = b''
-        a=list()
+        received_list=list()
         while b'\r\n\r\n' not in received_data:
             if socket is None:
                 received_data += self.c.recv(max_recv_size)
             received_data += socket[0].recv(max_recv_size)
-            a.append(received_data.decode().split('\r\n'))
+            received_list=received_data.decode().split('\r\n')
             if b'GET' in received_data:
-                pass
-                self.log(msg=f'[GET request from] ==> \033[33m{addres}\033[0m')
-        return a
+                self.log(msg=f'[{parse.unquote(received_list[0])} request from] ==> \033[33m{addres}\033[0m')
+        return received_list
                     
-    def send_response(self,msg,socket_and_addres):
-        addr = f'\033[33m{socket_and_addres[1]}\033[0m'
-        socket_and_addres[0][0].send(msg)
-        #self.log(msg=f'[Response sent to] ==> {addr}')
+    def send_response(self,query,socket_and_addres):
+        addr = f'\033[31m{socket_and_addres[1]}\033[0m'
+        socket_and_addres[0][0].send(query)
         socket_and_addres[0][0].close()
         self.log(msg=f'[Disconnected from] ==> {addr}')
         self.Thread.finished_users.append(socket_and_addres[1])
 
     def compose_http_response(self, thread):
-        result = thread.result[0][0]
-        arg = re.search('=(\S+)', result).group(1).split(' ')[0] if '=' in result else None
-        msg = PrepareHeader()._response_headers(arg) + self.generate_Response(arg)
-        return msg
+        result = thread.result[0]
+        if '/favicon.ico' in result:
+            arg=open('favicon.ico','rb').read()
+            query=PrepareHeader()._response_headers(len(arg)) + arg
+            return query
+        arg = self.generate_Response(parse.unquote(re.search('=(\S+)', result).group(1).split(' ')[0]) if '=' in result else 'Hello World!')
+        query = PrepareHeader()._response_headers(len(arg)) + arg
+        return query
     
-    def generate_Response(self, msg=None):
-        if msg is None:
-            msg = "Hello World!"
-        response = open('Hello world.html','r').read().format(msg=msg)
+    def generate_Response(self, query='Hello World!'):
+        response = open('Hello world.html','r').read().format(msg=query)
         return response.encode()
 
 class THREAD_PRESET(threading.Thread):
@@ -161,13 +161,6 @@ class Thread_manager:
                 return new_thread_name,new_thread
             else:
                 thread_mutex+=1
-            
-    # def is_returned(self,thread_name):
-    #     while True:
-    #         for session_name, user_address in self.SESSIONS.copy().items():
-    #             if thread_name == session_name and eval(thread_name).result is not None:
-    #                 self.user_thread_result_dict[user_address] = eval(thread_name).result
-    #                 return self.user_thread_result_dict
 
     def clearSessionInfo(self,thread_name,user):
         thread=eval(thread_name)
@@ -196,10 +189,10 @@ class PrepareHeader:
             self.string_header += line + '\r\n'
         self.string_header += '\r\n'
         
-    def _prepare_request_headers(self, method: str, url: str, params: dict):
+    def _request_headers(self, method: str, url: str, params: dict):
         headers = {
-            'Date': '',
-            'User-Agent': 'longinuspypialpha',
+            'Date': HTTPDateTime().HTTPDateTime,
+            'User-Agent': 'longinus',
             'Accept-Encoding': 'gzip, deflate',
             'Accept': 'application/json',
         }
@@ -209,13 +202,13 @@ class PrepareHeader:
                '\r\n'.join([f'{key}: {value}' for key, value in headers.items()]) + \
                '\r\n\r\n'
 
-    def _response_headers(self,arg):
+    def _response_headers(self,length):
         headers = {
             'Date': HTTPDateTime().HTTPDateTime,
             'Server':'longinus',
             'Cache-Control': 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0',
             'Pragma' : 'no-cache',
-            'Content-Length': len(HyperTextTransferProtocol().generate_Response(arg)),
+            'Content-Length': length
         }
         return (f'HTTP/1.1 200 OK\r\n' + \
         '\r\n'.join([f'{key}: {value}' for key, value in headers.items()]) + \
