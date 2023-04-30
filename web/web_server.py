@@ -88,7 +88,6 @@ class HyperTextTransferProtocol:
         result = parse.unquote(thread.result[0]).split()[1]
         try:
             Response = self.HandleTextFileRequest()
-            print(Response.decode())
             if '/?print=' in result:
                 Response = self.HandleTextFileRequest(query=result.split('=')[1])
             elif '.ico' in result:
