@@ -6,6 +6,7 @@ import logging
 import json
 import datetime as dt
 import re
+import os
 
 class Log:
     def __init__(self):
@@ -46,7 +47,7 @@ class HyperTextTransferProtocol:
         thread_name, thread = self.Thread.assign_user_thread(socket_and_addres)
         thread.start()
         thread.join()
-        query=self.compose_http_response(thread)
+        query=self.HandleGETRequest(thread)
         self.send_response(query,socket_and_addres)
         self.Thread.find_stopped_thread()
         self.Thread.clearSessionInfo(thread_name, addr)
@@ -83,19 +84,35 @@ class HyperTextTransferProtocol:
         self.log(msg=f'[Disconnected from] ==> {addr}')
         self.Thread.finished_users.append(socket_and_addres[1])
 
-    def compose_http_response(self, thread):
-        result = thread.result[0]
-        if '/favicon.ico' in result:
-            arg=open('favicon.ico','rb').read()
-            query=PrepareHeader()._response_headers(len(arg)) + arg
-            return query
-        arg = self.generate_Response(parse.unquote(re.search('=(\S+)', result).group(1).split(' ')[0]) if '=' in result else 'Hello World!')
-        query = PrepareHeader()._response_headers(len(arg)) + arg
-        return query
-    
-    def generate_Response(self, query='Hello World!'):
-        response = open('Hello world.html','r').read().format(msg=query)
-        return response.encode()
+    def HandleGETRequest(self, thread):
+        result = parse.unquote(thread.result[0]).split()[1]
+        try:
+            Response = self.HandleTextFileRequest()
+            print(Response.decode())
+            if '/?print=' in result:
+                Response = self.HandleTextFileRequest(query=result.split('=')[1])
+            elif '.ico' in result:
+                Response=self.HandleImgFileRequest(result)
+            elif '.html' in result:
+                Response=self.HandleTextFileRequest(flie=result)
+            elif ('사진' in result):
+                Response= self.HandleImgFileRequest(f'{result}.png')
+            return Response
+        except FileNotFoundError:
+            with open('web_files\\nofile.html','r') as arg:
+                print(f'해당 web_files{result}파일을 찾을수 없습니다.')
+                Error_Response=arg.read().format(msg=f'해당 web_files{result}파일을 찾을수 없습니다.').encode('utf-8')
+                return PrepareHeader()._response_headers(Error_Response) + Error_Response
+        
+    def HandleImgFileRequest(self,img_file):
+        with open(f'web_files{img_file}', 'rb') as ImgFile:
+            Response_file=ImgFile.read()
+            return PrepareHeader()._response_headers(Response_file) + Response_file
+        
+    def HandleTextFileRequest(self,flie='Hello world.html', query='아무튼 웹 서버임'):
+        with open(f'web_files\\{flie}','r') as TextFile:
+            Response_file=TextFile.read().format(msg=query)
+        return PrepareHeader()._response_headers(Response_file) + Response_file.encode('utf-8')
 
 class THREAD_PRESET(threading.Thread):
     def __init__(self, target, args=() , daemon=False):
@@ -191,7 +208,7 @@ class PrepareHeader:
         
     def _request_headers(self, method: str, url: str, params: dict):
         headers = {
-            'Date': HTTPDateTime().HTTPDateTime,
+            'Date': HttpDateTime().http_date_time,
             'User-Agent': 'longinus',
             'Accept-Encoding': 'gzip, deflate',
             'Accept': 'application/json',
@@ -202,32 +219,36 @@ class PrepareHeader:
                '\r\n'.join([f'{key}: {value}' for key, value in headers.items()]) + \
                '\r\n\r\n'
 
-    def _response_headers(self,length):
+    def _response_headers(self,Content):
         headers = {
-            'Date': HTTPDateTime().HTTPDateTime,
+            'Date': HttpDateTime().http_date_time,
             'Server':'longinus',
             'Cache-Control': 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0',
             'Pragma' : 'no-cache',
-            'Content-Length': length
+            'Content-Length': len(Content)
         }
         return (f'HTTP/1.1 200 OK\r\n' + \
         '\r\n'.join([f'{key}: {value}' for key, value in headers.items()]) + \
         '\r\n\r\n').encode()
 
-class HTTPDateTime:
-    def __init__(self) -> None:
-        now = dt.datetime.now()
-        now_utc=str(now.replace(tzinfo=dt.timezone.utc)).split('.')[0]
-        now_year=now_utc.split('-')[0]
-        now_month_number=now_utc.split('-')[1]
-        now_day_number=now.weekday()
-        now_t=now_utc.split('-')[2].split(' ')[1]
-        month_dict={'01':'Jan', '02':'Feb', '03':'Mar', 
-                    '04':'Apr', '05':'May', '06':'Jun', 
-                    '07':'Jul', '08':'Aug', '09':'Sep',
-                    '10':'Oct', '11':'Nov', '12':'Dec'}
-
-        Day_list=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-        self.HTTPDateTime=f'{Day_list[now_day_number]} {now.day} {month_dict[now_month_number]} {now_year} {now_t} GMT'
+class HttpDateTime:
+    def __init__(self):
+        now_utc = dt.datetime.utcnow().replace(microsecond=0)
+        month_dict = {
+            '01': 'Jan',
+            '02': 'Feb',
+            '03': 'Mar',
+            '04': 'Apr',
+            '05': 'May',
+            '06': 'Jun',
+            '07': 'Jul',
+            '08': 'Aug',
+            '09': 'Sep',
+            '10': 'Oct',
+            '11': 'Nov',
+            '12': 'Dec'
+        }
+        day_list = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        self.http_date_time = f'{day_list[now_utc.weekday()]} {now_utc.day} {month_dict[now_utc.strftime("%m")]} {now_utc.year} {now_utc.strftime("%H:%M:%S")} GMT'
         
 HyperTextTransferProtocol().start_web_server()
