@@ -5,8 +5,6 @@ from urllib import parse
 import logging
 import json
 import datetime as dt
-import re
-import os
 
 class Log:
     def __init__(self):
@@ -98,18 +96,18 @@ class HyperTextTransferProtocol:
                 Response= self.HandleImgFileRequest(f'{result}.png')
             return Response
         except FileNotFoundError:
-            with open('web_files\\nofile.html','r') as arg:
-                print(f'해당 web_files{result}파일을 찾을수 없습니다.')
-                Error_Response=arg.read().format(msg=f'해당 web_files{result}파일을 찾을수 없습니다.').encode('utf-8')
+            with open('resource\\nofile.html','r') as arg:
+                print(f'해당 resource{result}파일을 찾을수 없습니다.')
+                Error_Response=arg.read().format(msg=f'해당 resource{result}파일을 찾을수 없습니다.').encode('utf-8')
                 return PrepareHeader()._response_headers(Error_Response) + Error_Response
         
     def HandleImgFileRequest(self,img_file):
-        with open(f'web_files{img_file}', 'rb') as ImgFile:
+        with open(f'resource{img_file}', 'rb') as ImgFile:
             Response_file=ImgFile.read()
             return PrepareHeader()._response_headers(Response_file) + Response_file
         
     def HandleTextFileRequest(self,flie='Hello world.html', query='아무튼 웹 서버임'):
-        with open(f'web_files\\{flie}','r') as TextFile:
+        with open(f'resource\\{flie}','r') as TextFile:
             Response_file=TextFile.read().format(msg=query)
         return PrepareHeader()._response_headers(Response_file) + Response_file.encode('utf-8')
 
