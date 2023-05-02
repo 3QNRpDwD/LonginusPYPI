@@ -12,13 +12,19 @@ class DBManager:
         self.ServerDB={}
 
     def SaveDB(self):
-        with open('ServerDB.DB','w') as SDB:
-            pickle.dump(self.ServerDB,SDB)
+        with open('ServerDB.DB','wb') as WDB:
+            pickle.dump(self.ServerDB,WDB)
         return 'Done'
     
     def loadDB(self):
-        with open('ServerDB.DB','r') as SDB:
-            pickle.load(self.ServerDB,SDB)
+        with open('ServerDB.DB','rb') as RDB:
+            self.ServerDB=pickle.load(RDB)
+        print(type( self.ServerDB))
+        return 'Done'
+
+    def CreatDB(self):
+        with open('ServerDB.DB','ab') as CDB:
+            pickle.dump(self.ServerDB,CDB)
         return 'Done'
     
 class Log:
@@ -88,7 +94,7 @@ class HyperTextTransferProtocol:
         self.log(msg=f"[Connected with] ==> \033[32m{self.addr}\033[0m")
         return self.c, self.addr
     
-    def receive(self,socket=None, addres=None, max_recv_size=2):
+    def receive(self,socket=None, addres=None, max_recv_size=1):
         received_data = b''
         header_list=list()
         while b'\r\n\r\n' not in received_data:
@@ -113,7 +119,7 @@ class HyperTextTransferProtocol:
         self.Thread.finished_users.append(socket_and_addres[1])
 
     def HandleGETRequest(self, thread):
-        result = parse.unquote(thread.result[1][0]).split(' ')[1].split('/')[1].replace('\\','/')
+        result = parse.unquote(thread.result[1][0]).split(' ')[1].replace('\\','/')
         try:
             Response = self.HandleTextFileRequest()
             if '?print=' in result:
@@ -121,16 +127,16 @@ class HyperTextTransferProtocol:
             elif '.ico' in result:
                 Response=self.HandleImgFileRequest(result)
             elif '.html' in result:
-                Response=self.HandleTextFileRequest(flie=result)
-            elif ('.png' in result):
+                Response=self.HandleTextFileRequest(result)
+            elif '.png' in result:
                 Response= self.HandleImgFileRequest(f'{result}')
-            elif 'upload_from' in result:
-                Response= self.HandleImgFileRequest(f'upload_from.html')
+            elif '/upload_from' == result:
+                Response= self.HandleTextFileRequest('/upload_from.html')
             return Response
         except FileNotFoundError:
             with open('resource/nofile.html','r') as arg:
-                print(f'해당 resource/{result}파일을 찾을수 없습니다.')
-                Error_Response=arg.read().format(msg=f'해당 resource/{result}파일을 찾을수 없습니다.').encode('utf-8')
+                print(f'해당 resource{result}파일을 찾을수 없습니다.')
+                Error_Response=arg.read().format(msg=f'해당 resource{result}파일을 찾을수 없습니다.').encode('utf-8')
                 return PrepareHeader()._response_headers(Error_Response) + Error_Response
 
     def ExtractPostBodySize(self, header):
@@ -140,20 +146,23 @@ class HyperTextTransferProtocol:
             return int(content_length_str)
         return 0
         
-    def HandleImgFileRequest(self,img_file):
-        with open(f'resource/{img_file}', 'rb') as ImgFile:
+    def HandleImgFileRequest(self,img_file='/a.png'):
+        with open(f'resource{img_file}', 'rb') as ImgFile:
             Response_file=ImgFile.read()
             return PrepareHeader()._response_headers(Response_file) + Response_file
         
-    def HandleTextFileRequest(self,flie='Hello world.html', query='아무튼 웹 서버임'):
-        with open(f'resource/{flie}','r') as TextFile:
+    def HandleTextFileRequest(self,flie='/Hello world.html', query='아무튼 웹 서버임'):
+        with open(f'resource{flie}','r') as TextFile:
             Response_file=TextFile.read().format(msg=query)
         return PrepareHeader()._response_headers(Response_file) + Response_file.encode('utf-8')
     
     def ImgFileUpload(self,img_file,file_name):
-        with open(f'resource/ImgFileUpload/{file_name}', 'wb') as ImgFile:
+        self.DB.loadDB()
+        with open(f'resource/ImgFileUpload{file_name}', 'wb') as ImgFile:
             ImgFile.write(img_file)
-            self.DB.ServerDB['Img']={file_name:f'ImgFileUpload/{file_name}'}
+            self.DB.ServerDB['Img']={file_name:f'/ImgFileUpload/{file_name}'}
+            print(self.DB.ServerDB)
+            self.DB.SaveDB()
             return file_name
         
 
