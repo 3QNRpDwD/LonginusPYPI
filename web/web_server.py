@@ -5,7 +5,22 @@ from urllib import parse
 import logging
 import json
 import datetime as dt
+import pickle
 
+class DBManager:
+    def __init__(self) -> None:
+        self.ServerDB={}
+
+    def SaveDB(self):
+        with open('ServerDB.DB','w') as SDB:
+            pickle.dump(self.ServerDB,SDB)
+        return 'Done'
+    
+    def loadDB(self):
+        with open('ServerDB.DB','r') as SDB:
+            pickle.load(self.ServerDB,SDB)
+        return 'Done'
+    
 class Log:
     def __init__(self):
         self.logger = logging.getLogger()
@@ -32,6 +47,8 @@ class HyperTextTransferProtocol:
         self.s = socket.socket()
         self.Thread=Thread_manager()
         self.log=Log().logging
+        self.Content_Length=''
+        self.DB=DBManager()
 
     def start_web_server(self):
         self.bind_address()
@@ -40,15 +57,23 @@ class HyperTextTransferProtocol:
             user_info=self.accept_connection()
             self.Thread.Create_Thread(target=self.handle_request_thread,args=user_info)[1].start()
     
-    def handle_request_thread(self, c, addr):
-        socket_and_addres=[(c,),addr]
-        thread_name, thread = self.Thread.assign_user_thread(socket_and_addres)
+    def handle_request_thread(self, client_socket, client_address):
+        socket_and_address = [(client_socket,), client_address]
+        thread_name, thread = self.Thread.assign_user_thread(socket_and_address)
         thread.start()
         thread.join()
-        query=self.HandleGETRequest(thread)
-        self.send_response(query,socket_and_addres)
+        first_line = thread.result[0]
+        if 'GET' in first_line:
+            query=self.HandleGETRequest(thread)
+        elif 'POST' in first_line:
+            file_name=thread.result[1][1].split('"')[3]
+            self.ImgFileUpload(thread.result[2],f'{file_name}')
+            query=self.HandleImgFileRequest(self.DB.ServerDB['Img'][file_name])
+        else:
+            return 'This communication is not HTTP protocol'
+        self.send_response(query, socket_and_address)
         self.Thread.find_stopped_thread()
-        self.Thread.clearSessionInfo(thread_name, addr)
+        self.Thread.clearSessionInfo(thread_name, client_address)
 
     def bind_address(self, address='0.0.0.0', port=80):
         external_ip = request.urlopen('https://ident.me').read().decode('utf8')  
@@ -63,17 +88,22 @@ class HyperTextTransferProtocol:
         self.log(msg=f"[Connected with] ==> \033[32m{self.addr}\033[0m")
         return self.c, self.addr
     
-    def receive_data(self,socket=None, addres=None, max_recv_size=2048):
+    def receive(self,socket=None, addres=None, max_recv_size=2):
         received_data = b''
-        received_list=list()
+        header_list=list()
         while b'\r\n\r\n' not in received_data:
             if socket is None:
                 received_data += self.c.recv(max_recv_size)
             received_data += socket[0].recv(max_recv_size)
-            received_list=received_data.decode().split('\r\n')
-            if b'GET' in received_data:
-                self.log(msg=f'[{parse.unquote(received_list[0])} request from] ==> \033[33m{addres}\033[0m')
-        return received_list
+            header_list=received_data.decode().split('\r\n')
+        if 'POST' in header_list[0]:
+            post_header=self.receive(socket,addres)[1]
+            post_body=b''
+            for count in range(int(self.ExtractPostBodySize(header_list)/2048)):
+                post_body+=socket[0].recv(2048)
+            return 'POST',post_header,post_body
+        self.log(msg=f'[{parse.unquote(header_list[0])} request from] ==> \033[33m{addres}\033[0m')
+        return 'GET',header_list
                     
     def send_response(self,query,socket_and_addres):
         addr = f'\033[31m{socket_and_addres[1]}\033[0m'
@@ -83,33 +113,49 @@ class HyperTextTransferProtocol:
         self.Thread.finished_users.append(socket_and_addres[1])
 
     def HandleGETRequest(self, thread):
-        result = parse.unquote(thread.result[0]).split()[1]
+        result = parse.unquote(thread.result[1][0]).split(' ')[1].split('/')[1].replace('\\','/')
         try:
             Response = self.HandleTextFileRequest()
-            if '/?print=' in result:
+            if '?print=' in result:
                 Response = self.HandleTextFileRequest(query=result.split('=')[1])
             elif '.ico' in result:
                 Response=self.HandleImgFileRequest(result)
             elif '.html' in result:
                 Response=self.HandleTextFileRequest(flie=result)
-            elif ('사진' in result):
-                Response= self.HandleImgFileRequest(f'{result}.png')
+            elif ('.png' in result):
+                Response= self.HandleImgFileRequest(f'{result}')
+            elif 'upload_from' in result:
+                Response= self.HandleImgFileRequest(f'upload_from.html')
             return Response
         except FileNotFoundError:
-            with open('resource\\nofile.html','r') as arg:
-                print(f'해당 resource{result}파일을 찾을수 없습니다.')
-                Error_Response=arg.read().format(msg=f'해당 resource{result}파일을 찾을수 없습니다.').encode('utf-8')
+            with open('resource/nofile.html','r') as arg:
+                print(f'해당 resource/{result}파일을 찾을수 없습니다.')
+                Error_Response=arg.read().format(msg=f'해당 resource/{result}파일을 찾을수 없습니다.').encode('utf-8')
                 return PrepareHeader()._response_headers(Error_Response) + Error_Response
+
+    def ExtractPostBodySize(self, header):
+        content_length_header = next((header for header in header if 'Content-Length' in header), None)
+        if content_length_header:
+            content_length_str = ''.join(filter(str.isdigit, content_length_header))
+            return int(content_length_str)
+        return 0
         
     def HandleImgFileRequest(self,img_file):
-        with open(f'resource{img_file}', 'rb') as ImgFile:
+        with open(f'resource/{img_file}', 'rb') as ImgFile:
             Response_file=ImgFile.read()
             return PrepareHeader()._response_headers(Response_file) + Response_file
         
     def HandleTextFileRequest(self,flie='Hello world.html', query='아무튼 웹 서버임'):
-        with open(f'resource\\{flie}','r') as TextFile:
+        with open(f'resource/{flie}','r') as TextFile:
             Response_file=TextFile.read().format(msg=query)
         return PrepareHeader()._response_headers(Response_file) + Response_file.encode('utf-8')
+    
+    def ImgFileUpload(self,img_file,file_name):
+        with open(f'resource/ImgFileUpload/{file_name}', 'wb') as ImgFile:
+            ImgFile.write(img_file)
+            self.DB.ServerDB['Img']={file_name:f'ImgFileUpload/{file_name}'}
+            return file_name
+        
 
 class THREAD_PRESET(threading.Thread):
     def __init__(self, target, args=() , daemon=False):
@@ -156,7 +202,7 @@ class Thread_manager:
         print(LIST_VARIABLES)
 
     def assign_user_thread(self,socket_and_addres):
-        thread_name,thread = self.Create_Thread(target=HyperTextTransferProtocol().receive_data,args=socket_and_addres)
+        thread_name,thread = self.Create_Thread(target=HyperTextTransferProtocol().receive,args=socket_and_addres)
         self.USERS.append(socket_and_addres[1])
         self.USERS_COUNT+=1
         self.SESSIONS[thread_name]=socket_and_addres[1]
